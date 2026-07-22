@@ -384,11 +384,15 @@ class ProfileWizardView(discord.ui.View):
         except (discord.Forbidden, discord.HTTPException) as e:
             print(f"[ERROR] プロフィールの投稿に失敗しました: {e}")
 
-        # 男性は録音との待ち合わせ（録音が既にあれば採点パネル付きで転送、無ければ待機）
-        if self.is_male:
-            cog = interaction.client.get_cog("RecordingScore")
-            if cog is not None:
+        # 審査への送信
+        cog = interaction.client.get_cog("RecordingScore")
+        if cog is not None:
+            if self.is_male:
+                # 男性は録音との待ち合わせ（録音が既にあれば審査へ、無ければ待機）
                 await cog.on_profile_created(interaction, embed)
+            else:
+                # 女性は音声不要。プロフィールのみで即審査へ
+                await cog.on_profile_only(interaction, embed)
 
         # 障害・ハンデの申告があれば運営チャンネルにのみ共有（公開しない）
         if self.disability:

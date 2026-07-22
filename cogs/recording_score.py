@@ -65,6 +65,15 @@ class RecordingScore(commands.Cog, DatabaseBase):
             except (discord.Forbidden, discord.HTTPException):
                 pass
 
+    async def on_profile_only(self, interaction: discord.Interaction, embed: discord.Embed):
+        """女性など音声不要の審査。プロフィールのみで即座に審査へ送る。"""
+        fch = self._forward_channel()
+        if fch is None:
+            return
+        await forward_recording(
+            fch, interaction.user, [], embed=embed, source_channel=interaction.channel
+        )
+
     async def on_interview_audio(self, message: discord.Message, audio_attachments: list):
         """面接チャンネルに録音が投稿されたとき呼ぶ。プロフィールが揃っていれば転送。"""
         pending = self._pop_pending(message.author.id)
