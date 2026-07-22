@@ -6,9 +6,9 @@ import json
 from core.db_base import DatabaseBase
 from ui.recording_score import (
     ScoreButton,
-    SCORE_CATEGORIES,
     SCORE_REVIEWER_COUNT,
     PASS_THRESHOLD,
+    categories_for,
     forward_recording,
     is_audio,
 )
@@ -53,7 +53,8 @@ class RecordingScore(commands.Cog, DatabaseBase):
             return
         if audio:
             await forward_recording(
-                fch, interaction.user, audio, embed=embed, source_channel=interaction.channel
+                fch, interaction.user, audio, embed=embed,
+                source_channel=interaction.channel, kind="m",
             )
         else:
             self._store_pending(interaction.user.id, embed)
@@ -71,7 +72,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         if fch is None:
             return
         await forward_recording(
-            fch, interaction.user, [], embed=embed, source_channel=interaction.channel
+            fch, interaction.user, [], embed=embed, source_channel=interaction.channel, kind="f",
         )
 
     async def on_interview_audio(self, message: discord.Message, audio_attachments: list):
@@ -84,7 +85,8 @@ class RecordingScore(commands.Cog, DatabaseBase):
             return
         embed = discord.Embed.from_dict(pending)
         await forward_recording(
-            fch, message.author, audio_attachments, embed=embed, source_channel=message.channel
+            fch, message.author, audio_attachments, embed=embed,
+            source_channel=message.channel, kind="m",
         )
         try:
             await message.channel.send("✅ 録音を受け付けました。運営の審査に回りました。")
@@ -148,6 +150,10 @@ class RecordingScore(commands.Cog, DatabaseBase):
                         )
                     """)
                     cur.execute("ALTER TABLE recording_scores ADD COLUMN IF NOT EXISTS reason TEXT")
+                    cur.execute("ALTER TABLE recording_scores ADD COLUMN IF NOT EXISTS kind CHAR(1) DEFAULT 'm'")
+                    # 女性は voice/talk を採点しないため NULL 許可にする
+                    cur.execute("ALTER TABLE recording_scores ALTER COLUMN s_voice DROP NOT NULL")
+                    cur.execute("ALTER TABLE recording_scores ALTER COLUMN s_talk DROP NOT NULL")
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS recording_results (
                             message_id BIGINT PRIMARY KEY
@@ -168,21 +174,22 @@ class RecordingScore(commands.Cog, DatabaseBase):
     # ------------------------------------------------------------------ #
     async def submit_score(
         self, interaction: discord.Interaction, message_id: int, submitter_id: int,
-        scores: dict, reason: str = "",
+        scores: dict, reason: str = "", kind: str = "m",
     ):
         try:
             with self.get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "INSERT INTO recording_scores "
-                        "(message_id, reviewer_id, submitter_id, s_profile, s_voice, s_talk, s_character, reason) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                        "(message_id, reviewer_id, submitter_id, s_profile, s_voice, s_talk, s_character, reason, kind) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
                         "ON CONFLICT (message_id, reviewer_id) DO UPDATE SET "
                         "s_profile = EXCLUDED.s_profile, s_voice = EXCLUDED.s_voice, "
-                        "s_talk = EXCLUDED.s_talk, s_character = EXCLUDED.s_character, reason = EXCLUDED.reason",
+                        "s_talk = EXCLUDED.s_talk, s_character = EXCLUDED.s_character, "
+                        "reason = EXCLUDED.reason, kind = EXCLUDED.kind",
                         (message_id, interaction.user.id, submitter_id,
-                         scores["profile"], scores["voice"], scores["talk"], scores["character"],
-                         reason or None),
+                         scores.get("profile"), scores.get("voice"), scores.get("talk"),
+                         scores.get("character"), reason or None, kind),
                     )
                     cur.execute(
                         "SELECT COUNT(*) FROM recording_scores WHERE message_id = %s", (message_id,)
@@ -223,7 +230,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
             with self.get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT reviewer_id, s_profile, s_voice, s_talk, s_character, reason "
+                        "SELECT reviewer_id, s_profile, s_voice, s_talk, s_character, reason, kind "
                         "FROM recording_scores WHERE message_id = %s", (message_id,)
                     )
                     rows = cur.fetchall()
@@ -235,19 +242,22 @@ class RecordingScore(commands.Cog, DatabaseBase):
 
         guild = interaction.guild
         n = len(rows)
-        # スコアは index 1〜4（0 は reviewer_id、5 は reason）
-        sums = [sum(r[i] for r in rows) for i in range(1, 5)]
-        avgs = [s / n for s in sums]
-        total_avg = sum(avgs)
-        passed = total_avg >= PASS_THRESHOLD
+        kind = rows[0][6] or "m"
+        cats = categories_for(kind)  # 種別に応じた採点項目
+        col_of = {"profile": 1, "voice": 2, "talk": 3, "character": 4}
+
+        # 項目別平均（該当項目のみ）
+        avgs = [(label, sum(r[col_of[key]] for r in rows) / n) for key, label in cats]
+        total_avg = sum(a for _, a in avgs)
+        max_total = len(cats) * 2
+        threshold = PASS_THRESHOLD / 8 * max_total  # 満点に対する比率で合格ラインを算出
+        passed = total_avg >= threshold
 
         # 0点をつけた人：名前 + 対象項目 + 理由
         zero_lines = []
-        for reviewer_id, sp, sv, st, sc, reason in rows:
-            scores4 = (sp, sv, st, sc)
-            zero_labels = [
-                label for (key, label), val in zip(SCORE_CATEGORIES, scores4) if val == 0
-            ]
+        for r in rows:
+            reviewer_id, reason = r[0], r[5]
+            zero_labels = [label for key, label in cats if r[col_of[key]] == 0]
             if not zero_labels:
                 continue
             reviewer = guild.get_member(reviewer_id)
@@ -277,14 +287,12 @@ class RecordingScore(commands.Cog, DatabaseBase):
         container.add_item(discord.ui.TextDisplay(
             f"**提出者：**{submitter_txt}\n"
             f"**採点人数：**{n}人\n"
-            f"**判定：**{result_line}（合計 {total_avg:.2f} / 8・合格ライン {PASS_THRESHOLD:g}点）"
+            f"**判定：**{result_line}（合計 {total_avg:.2f} / {max_total}・合格ライン {threshold:.2f}点）"
         ))
         container.add_item(Sep(spacing=large))
-        score_lines = "\n".join(
-            f"- {label}：**{avg:.2f}** / 2" for (key, label), avg in zip(SCORE_CATEGORIES, avgs)
-        )
+        score_lines = "\n".join(f"- {label}：**{avg:.2f}** / 2" for label, avg in avgs)
         container.add_item(discord.ui.TextDisplay(
-            f"### 項目別スコア\n{score_lines}\n\n**合計（平均）：{total_avg:.2f} / 8**"
+            f"### 項目別スコア\n{score_lines}\n\n**合計（平均）：{total_avg:.2f} / {max_total}**"
         ))
         if zero_lines:
             container.add_item(Sep(spacing=large))

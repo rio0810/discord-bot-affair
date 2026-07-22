@@ -19,20 +19,30 @@ SCORE_CATEGORIES: list[tuple[str, str]] = [
     ("talk", "トーク力（0〜2）"),
     ("character", "人柄（0〜2）"),
 ]
+# 女性（音声なし）の採点項目：voice / talk を除く
+FEMALE_KEYS = {"profile", "character"}
+
+
+def categories_for(kind: str) -> list[tuple[str, str]]:
+    """審査の種別に応じた採点項目。'f'（女性）は音声系を除く。"""
+    if kind == "f":
+        return [(k, label) for k, label in SCORE_CATEGORIES if k in FEMALE_KEYS]
+    return SCORE_CATEGORIES
 
 # 何人が採点したら結果を出すか（環境変数で変更可・既定4人）
 SCORE_REVIEWER_COUNT = int(os.getenv("SCORE_REVIEWER_COUNT") or "4")
-# 合計平均がこの点数以上なら合格（8点満点）
+# 合計平均が「1項目あたり満点2点」換算でこの割合以上なら合格（5/8 = 62.5%）
 PASS_THRESHOLD = 5.0
 
 
-class ScoreModal(discord.ui.Modal, title="録音の採点"):
-    def __init__(self, submitter_id: int, message_id: int):
+class ScoreModal(discord.ui.Modal, title="プロフィールの採点"):
+    def __init__(self, submitter_id: int, message_id: int, kind: str = "m"):
         super().__init__()
         self.submitter_id = submitter_id
         self.message_id = message_id
+        self.kind = kind
         self.groups: dict[str, discord.ui.RadioGroup] = {}
-        for key, label in SCORE_CATEGORIES:
+        for key, label in categories_for(kind):
             rg = discord.ui.RadioGroup(
                 options=[discord.RadioGroupOption(label=str(n), value=str(n)) for n in (0, 1, 2)],
                 required=True,
@@ -67,37 +77,40 @@ class ScoreModal(discord.ui.Modal, title="録音の採点"):
                 "❌ 0点をつけていない場合は理由欄を空にしてもう一度採点してください。", ephemeral=True
             )
             return
-        await cog.submit_score(interaction, self.message_id, self.submitter_id, scores, reason)
+        await cog.submit_score(interaction, self.message_id, self.submitter_id, scores, reason, self.kind)
 
 
 class ScoreButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"rec_score:(?P<submitter>[0-9]+)",
+    template=r"rec_score:(?P<submitter>[0-9]+)(?::(?P<kind>[mf]))?",
 ):
-    def __init__(self, submitter_id: int):
+    def __init__(self, submitter_id: int, kind: str = "m"):
         self.submitter_id = submitter_id
+        self.kind = kind
         super().__init__(
             discord.ui.Button(
                 label="採点する",
                 style=discord.ButtonStyle.green,
                 emoji="📝",
-                custom_id=f"rec_score:{submitter_id}",
+                custom_id=f"rec_score:{submitter_id}:{kind}",
             )
         )
 
     @classmethod
     async def from_custom_id(cls, interaction, item, match):
-        return cls(int(match["submitter"]))
+        return cls(int(match["submitter"]), match["kind"] or "m")
 
     async def callback(self, interaction: discord.Interaction):
-        # （検証用）自分の録音も採点可能にしている
-        await interaction.response.send_modal(ScoreModal(self.submitter_id, interaction.message.id))
+        # （検証用）自分のプロフィールも採点可能にしている
+        await interaction.response.send_modal(
+            ScoreModal(self.submitter_id, interaction.message.id, self.kind)
+        )
 
 
-def make_score_view(submitter_id: int) -> discord.ui.View:
-    """録音メッセージに付ける採点ボタン入りのView。"""
+def make_score_view(submitter_id: int, kind: str = "m") -> discord.ui.View:
+    """審査メッセージに付ける採点ボタン入りのView。"""
     view = discord.ui.View(timeout=None)
-    view.add_item(ScoreButton(submitter_id))
+    view.add_item(ScoreButton(submitter_id, kind))
     return view
 
 
@@ -108,6 +121,7 @@ async def forward_recording(
     embed: discord.Embed | None = None,
     source_channel=None,
     jump_url: str | None = None,
+    kind: str = "m",
 ):
     """提出された録音を採点ボタン付きで転送チャンネルへ送る（音声投稿・プロフ入力の両方から利用）。
 
@@ -126,7 +140,7 @@ async def forward_recording(
             embed.add_field(name="元メッセージ", value=f"[ジャンプ]({jump_url})", inline=False)
         embed.set_thumbnail(url=submitter.display_avatar.url)
 
-    view = make_score_view(submitter.id)
+    view = make_score_view(submitter.id, kind)
     try:
         files = [await a.to_file() for a in attachments]
     except discord.HTTPException as e:

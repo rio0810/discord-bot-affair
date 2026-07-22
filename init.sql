@@ -44,10 +44,11 @@ CREATE TABLE IF NOT EXISTS recording_scores (
     reviewer_id BIGINT NOT NULL,
     submitter_id BIGINT NOT NULL,
     s_profile INT NOT NULL,
-    s_voice INT NOT NULL,
-    s_talk INT NOT NULL,
+    s_voice INT,           -- 女性は採点しないため NULL 許可
+    s_talk INT,            -- 女性は採点しないため NULL 許可
     s_character INT NOT NULL,
     reason TEXT,
+    kind CHAR(1) DEFAULT 'm',  -- 'm'=男性(4項目) / 'f'=女性(2項目)
     PRIMARY KEY (message_id, reviewer_id)
 );
 CREATE TABLE IF NOT EXISTS recording_results (
