@@ -301,6 +301,10 @@ class RecordingScore(commands.Cog, DatabaseBase):
             ))
         view.add_item(container)
 
+        # 審査結果はフォーラムの審査ポスト（スレッド）内にだけ出す。テキストチャンネルには出さない。
+        if not isinstance(interaction.channel, discord.Thread):
+            return
+
         allowed = discord.AllowedMentions(roles=[admin_role]) if admin_role else discord.AllowedMentions.none()
         try:
             await interaction.channel.send(view=view, allowed_mentions=allowed)
