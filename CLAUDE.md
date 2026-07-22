@@ -37,6 +37,7 @@ Copy `.env.example` to `.env` and fill in:
 | `SCORE_REVIEWER_COUNT` | How many reviewers must score a recording before the result is posted (default 4) |
 | `MALE_ROLE_ID` / `FEMALE_ROLE_ID` | Role IDs for the 1-on-1 call matching feature |
 | `NEWCOMER_ROLE_ID` | Members with this role can't use call matching (blocked from recruiting, hidden from target lists, and can't accept). Optional |
+| `WAITING_ROLE_ID` / `WAITING_CATEGORY_ID` | `waiting_room.py`: while a member has the waiting role, per-member `view_channel=False` overwrites hide every category except `WAITING_CATEGORY_ID`; removed when the role is taken away |
 | `CALL_CATEGORY_ID` | Category ID for created call rooms (optional) |
 | `CALL_LOG_CHANNEL_ID` | Channel ID for call-matching accept/decline logs (no logging if unset) |
 | `MAX_ROOMS_PER_FEMALE` / `MAX_ROOMS_PER_MALE` | Max concurrent call rooms per user (default 2) |
