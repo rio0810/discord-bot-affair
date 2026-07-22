@@ -15,6 +15,19 @@ class WaitingRoom(commands.Cog):
         self.visible_category_id = int(os.getenv("WAITING_CATEGORY_ID") or "0")
 
     @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        # サーバー参加時に待機ロールを自動付与（付与により on_member_update で隔離される）
+        if member.bot or not self.waiting_role_id:
+            return
+        role = member.guild.get_role(self.waiting_role_id)
+        if role is None or role in member.roles:
+            return
+        try:
+            await member.add_roles(role, reason="サーバー参加時の待機ロール付与")
+        except (discord.Forbidden, discord.HTTPException) as e:
+            print(f"[ERROR] 待機ロールの付与に失敗しました: {e}")
+
+    @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         if not self.waiting_role_id or not self.visible_category_id:
             return
