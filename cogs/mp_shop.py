@@ -303,7 +303,7 @@ class MPShop(commands.Cog, DatabaseBase):
         if amount <= 0:
             await interaction.response.send_message("1枚以上を指定してください。", ephemeral=True)
             return
-        new_balance = self._grant(member.id, amount)
+        new_balance = self._grant(member.id, amount, member.display_name)
         await interaction.response.send_message(
             f"✅ {member.mention} に **{amount}枚** 配布しました。（現在 {new_balance}枚）", ephemeral=True
         )
@@ -321,7 +321,7 @@ class MPShop(commands.Cog, DatabaseBase):
             return
         before = self.get_tickets(member.id)
         taken = min(amount, before)
-        new_balance = self._grant(member.id, -taken) if taken else before
+        new_balance = self._grant(member.id, -taken, member.display_name) if taken else before
         await interaction.response.send_message(
             f"✅ {member.mention} から **{taken}枚** 没収しました。（現在 {new_balance}枚）", ephemeral=True
         )
@@ -392,17 +392,18 @@ class MPShop(commands.Cog, DatabaseBase):
         embed.set_footer(text=f"所持者 {len(rows)}名 / 合計 {total}枚")
         await interaction.followup.send(embed=embed)
 
-    def _grant(self, user_id: int, amount: int) -> int:
-        """チケットを amount 枚増減し（負なら減少）、変更後の残高を返す。"""
+    def _grant(self, user_id: int, amount: int, user_name: str | None = None) -> int:
+        """チケットを amount 枚増減し（負なら減少）、変更後の残高を返す。user_name があれば記録。"""
         try:
             with self.get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "INSERT INTO users (user_id, mp_tickets) VALUES (%s, %s) "
+                        "INSERT INTO users (user_id, mp_tickets, user_name) VALUES (%s, %s, %s) "
                         "ON CONFLICT (user_id) DO UPDATE SET "
-                        "mp_tickets = GREATEST(0, users.mp_tickets + EXCLUDED.mp_tickets) "
+                        "mp_tickets = GREATEST(0, users.mp_tickets + EXCLUDED.mp_tickets), "
+                        "user_name = COALESCE(EXCLUDED.user_name, users.user_name) "
                         "RETURNING mp_tickets",
-                        (user_id, amount),
+                        (user_id, amount, user_name),
                     )
                     new_balance = cur.fetchone()[0]
                     conn.commit()
