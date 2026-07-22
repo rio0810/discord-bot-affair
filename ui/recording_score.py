@@ -131,6 +131,18 @@ async def forward_recording(
         files = [await a.to_file() for a in attachments]
     except discord.HTTPException as e:
         print(f"[ERROR] 録音ファイルの取得に失敗しました: {e}")
-        await forward_channel.send(embed=embed, view=view)
-        return
-    await forward_channel.send(embed=embed, files=files, view=view)
+        files = []
+
+    # フォーラムなら「ユーザー名」で新規ポストを作成、テキストなら通常メッセージ
+    if isinstance(forward_channel, discord.ForumChannel):
+        try:
+            await forward_channel.create_thread(
+                name=getattr(submitter, "display_name", str(submitter))[:100],
+                embed=embed,
+                files=files,
+                view=view,
+            )
+        except (discord.Forbidden, discord.HTTPException) as e:
+            print(f"[ERROR] 審査フォーラムへの投稿に失敗しました: {e}")
+    else:
+        await forward_channel.send(embed=embed, files=files, view=view)

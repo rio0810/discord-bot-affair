@@ -26,12 +26,19 @@ class RecordingScore(commands.Cog, DatabaseBase):
         self.bot = bot
         self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID", "0"))
         self.forward_channel_id = int(os.getenv("RECORDING_FORWARD_CHANNEL_ID") or "0")
+        # 審査の送信先フォーラム（設定時はユーザー名で新規ポストを作成）
+        self.forum_channel_id = int(os.getenv("RECORDING_FORUM_CHANNEL_ID") or "0")
 
     async def cog_load(self):
         self._ensure_tables()
         self.bot.add_dynamic_items(ScoreButton)
 
     def _forward_channel(self):
+        # フォーラムが設定されていれば優先。無ければ従来のテキストチャンネル。
+        if self.forum_channel_id:
+            ch = self.bot.get_channel(self.forum_channel_id)
+            if isinstance(ch, discord.ForumChannel):
+                return ch
         ch = self.bot.get_channel(self.forward_channel_id) if self.forward_channel_id else None
         return ch if isinstance(ch, (discord.TextChannel, discord.Thread)) else None
 

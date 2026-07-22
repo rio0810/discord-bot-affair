@@ -33,7 +33,8 @@ Copy `.env.example` to `.env` and fill in:
 | `EXCLUDED_CHANNEL_IDS` | Comma-separated VC IDs excluded from VC-time tracking |
 | `VC_RANK_REDUCED_CATEGORY_IDS` | Comma-separated category IDs where VC time accrues at 1/3 rate (fractional carry) |
 | `INTERVIEW_ROOM_CATEGORY_ID` | Category ID under which per-member interview rooms are created (optional) |
-| `RECORDING_FORWARD_CHANNEL_ID` | Channel ID recordings are forwarded to (no forwarding if unset) |
+| `RECORDING_FORWARD_CHANNEL_ID` | Text channel recordings/審査 are forwarded to (no forwarding if unset) |
+| `RECORDING_FORUM_CHANNEL_ID` | If set to a Forum channel, the 審査 (profile+audio+score panel) is posted as a new forum thread titled with the submitter's name (takes priority over `RECORDING_FORWARD_CHANNEL_ID`) |
 | `SCORE_REVIEWER_COUNT` | How many reviewers must score a recording before the result is posted (default 4) |
 | `MALE_ROLE_ID` / `FEMALE_ROLE_ID` | Role IDs for the 1-on-1 call matching feature |
 | `NEWCOMER_ROLE_ID` | Members with this role can't use call matching (blocked from recruiting, hidden from target lists, and can't accept). Optional |
