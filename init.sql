@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     text_count INT DEFAULT 0,
     text_rank INTEGER DEFAULT 0,
     mp_tickets INT DEFAULT 0,
-    username TEXT
+    user_name TEXT
 );
 
 -- 2. お試し通話の誘った履歴（同じ相手を2度誘えないようにする）
