@@ -46,6 +46,7 @@ class VCRank(commands.Cog, DatabaseBase):
                     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS text_count INT DEFAULT 0")
                     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS text_rank INTEGER DEFAULT 0")
                     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS mp_tickets INT DEFAULT 0")
+                    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT")
                     conn.commit()
         except Exception as e:
             print(f"[ERROR] users のスキーマ準備に失敗しました: {e}")
@@ -138,12 +139,13 @@ class VCRank(commands.Cog, DatabaseBase):
                 new_rank += 1
 
             cur.execute("""
-                INSERT INTO users (user_id, text_count, text_rank)
-                VALUES (%s, %s, %s)
+                INSERT INTO users (user_id, text_count, text_rank, username)
+                VALUES (%s, %s, %s, %s)
                 ON CONFLICT (user_id) DO UPDATE SET
                     text_count = EXCLUDED.text_count,
-                    text_rank = EXCLUDED.text_rank
-            """, (member.id, new_count, new_rank))
+                    text_rank = EXCLUDED.text_rank,
+                    username = EXCLUDED.username
+            """, (member.id, new_count, new_rank, member.display_name))
             conn.commit()
         except Exception as e:
             print(f"Error in VCRank(text): {e}")
@@ -210,13 +212,14 @@ class VCRank(commands.Cog, DatabaseBase):
 
             # DB更新
             cur.execute("""
-                INSERT INTO users (user_id, vc_minutes_total, rank, mp_tickets)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO users (user_id, vc_minutes_total, rank, mp_tickets, username)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (user_id) DO UPDATE SET
                     vc_minutes_total = EXCLUDED.vc_minutes_total,
                     rank = EXCLUDED.rank,
-                    mp_tickets = users.mp_tickets + EXCLUDED.mp_tickets
-            """, (member.id, new_total, new_rank, tickets_gained))
+                    mp_tickets = users.mp_tickets + EXCLUDED.mp_tickets,
+                    username = EXCLUDED.username
+            """, (member.id, new_total, new_rank, tickets_gained, member.display_name))
 
             conn.commit()
 
