@@ -27,18 +27,23 @@ class RecordingScore(commands.Cog, DatabaseBase):
         self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID", "0"))
         self.forward_channel_id = int(os.getenv("RECORDING_FORWARD_CHANNEL_ID") or "0")
         # 審査の送信先フォーラム（設定時はユーザー名で新規ポストを作成）
+        # 男女で分けたい場合は MALE/FEMALE を設定。共通で使う場合は RECORDING_FORUM_CHANNEL_ID
         self.forum_channel_id = int(os.getenv("RECORDING_FORUM_CHANNEL_ID") or "0")
+        self.forum_male_id = int(os.getenv("RECORDING_FORUM_MALE_ID") or "0")
+        self.forum_female_id = int(os.getenv("RECORDING_FORUM_FEMALE_ID") or "0")
 
     async def cog_load(self):
         self._ensure_tables()
         self.bot.add_dynamic_items(ScoreButton)
 
-    def _forward_channel(self):
-        # フォーラムが設定されていれば優先。無ければ従来のテキストチャンネル。
-        if self.forum_channel_id:
-            ch = self.bot.get_channel(self.forum_channel_id)
-            if isinstance(ch, discord.ForumChannel):
-                return ch
+    def _forward_channel(self, kind: str = "m"):
+        # 種別に応じたフォーラムを優先。無ければ共通フォーラム、最後にテキストチャンネル。
+        forum_id = self.forum_female_id if kind == "f" else self.forum_male_id
+        for fid in (forum_id, self.forum_channel_id):
+            if fid:
+                ch = self.bot.get_channel(fid)
+                if isinstance(ch, discord.ForumChannel):
+                    return ch
         ch = self.bot.get_channel(self.forward_channel_id) if self.forward_channel_id else None
         return ch if isinstance(ch, (discord.TextChannel, discord.Thread)) else None
 
@@ -48,7 +53,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
     async def on_profile_created(self, interaction: discord.Interaction, embed: discord.Embed):
         """男性のプロフィール作成時に呼ぶ。録音が既にあれば転送、無ければ待機登録。"""
         audio = await self._find_recent_audio(interaction.channel, interaction.user.id)
-        fch = self._forward_channel()
+        fch = self._forward_channel("m")
         if fch is None:
             return
         if audio:
@@ -68,7 +73,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
 
     async def on_profile_only(self, interaction: discord.Interaction, embed: discord.Embed):
         """女性など音声不要の審査。プロフィールのみで即座に審査へ送る。"""
-        fch = self._forward_channel()
+        fch = self._forward_channel("f")
         if fch is None:
             return
         await forward_recording(
@@ -80,7 +85,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         pending = self._pop_pending(message.author.id)
         if pending is None:
             return  # プロフィール未作成 → 待機（プロフィール作成時に拾う）
-        fch = self._forward_channel()
+        fch = self._forward_channel("m")
         if fch is None:
             return
         embed = discord.Embed.from_dict(pending)
