@@ -58,12 +58,13 @@ class WaitingRoom(commands.Cog):
                 )
             except (discord.Forbidden, discord.HTTPException):
                 pass
-        # 対象カテゴリは確実に見えるよう個別許可
+        # 対象カテゴリは見えるが、メッセージ送信は不可（送信できるのは自分専用チャンネルのみ）
         visible = guild.get_channel(self.visible_category_id)
         if isinstance(visible, discord.CategoryChannel):
             try:
                 await visible.set_permissions(
-                    member, view_channel=True, reason="待機ロール：対象カテゴリを表示"
+                    member, view_channel=True, send_messages=False,
+                    reason="待機ロール：対象カテゴリは閲覧のみ（送信不可）",
                 )
             except (discord.Forbidden, discord.HTTPException):
                 pass

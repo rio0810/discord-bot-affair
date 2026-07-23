@@ -194,6 +194,7 @@ class InterviewRoomCog(commands.Cog):
                 category=category,
                 overwrites=overwrites,
                 topic=f"{topic_prefix}{user.id}",
+                slowmode_delay=60,  # 1分に1通までのスローモード
             )
         except (discord.Forbidden, discord.HTTPException) as e:
             print(f"[ERROR] 専用チャンネル作成に失敗しました ({user.id}): {e}")
