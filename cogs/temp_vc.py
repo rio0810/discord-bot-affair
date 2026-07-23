@@ -162,8 +162,12 @@ class TempVC(commands.Cog, DatabaseBase):
             category = lobby.category if isinstance(lobby, discord.VoiceChannel) else None
 
         name = f"{member.display_name}の部屋"[:100]
+        # 画面共有・カメラ（ビデオ権限=stream）を全員に許可する
+        overwrites = {guild.default_role: discord.PermissionOverwrite(stream=True)}
         try:
-            new_vc = await guild.create_voice_channel(name=name, category=category, reason="一時VCの作成")
+            new_vc = await guild.create_voice_channel(
+                name=name, category=category, overwrites=overwrites, reason="一時VCの作成"
+            )
             await member.move_to(new_vc, reason="一時VCへ移動")
         except (discord.Forbidden, discord.HTTPException) as e:
             print(f"[ERROR] 一時VCの作成/移動に失敗しました ({member.id}): {e}")
