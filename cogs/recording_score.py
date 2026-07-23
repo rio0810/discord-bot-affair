@@ -84,7 +84,16 @@ class RecordingScore(commands.Cog, DatabaseBase):
         """面接チャンネルに録音が投稿されたとき呼ぶ。プロフィールが揃っていれば転送。"""
         pending = self._pop_pending(message.author.id)
         if pending is None:
-            return  # プロフィール未作成 → 待機（プロフィール作成時に拾う）
+            # プロフィール未作成 → 録音は受け付けつつ、プロフィール作成を催促
+            try:
+                await message.channel.send(
+                    f"{message.author.mention} 🎤 録音を受け付けました！\n"
+                    "続いて **「📝 プロフィールを作成する」** ボタンからプロフィールを作成してください。\n"
+                    "（プロフィールの作成が完了すると、運営の審査に回ります）"
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+            return  # プロフィール作成時に録音を拾って審査へ回す
         fch = self._forward_channel("m")
         if fch is None:
             return
