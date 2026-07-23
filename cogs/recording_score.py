@@ -4,6 +4,12 @@ import os
 import json
 
 from core.db_base import DatabaseBase
+
+# 提出が揃って審査に回ったときの案内文（男女共通）
+SUBMITTED_MSG = (
+    "✅ 提出を受け付けました！運営の審査に回ります。\n"
+    "📩 結果は **24時間以内** にお知らせしますので、少々お待ちください🙏"
+)
 from ui.recording_score import (
     ScoreButton,
     SCORE_REVIEWER_COUNT,
@@ -62,6 +68,10 @@ class RecordingScore(commands.Cog, DatabaseBase):
                 source_channel=interaction.channel, kind="m",
             )
             self._mark_done(interaction.user.id)
+            try:
+                await interaction.channel.send(SUBMITTED_MSG)
+            except (discord.Forbidden, discord.HTTPException):
+                pass
         else:
             self._store_pending(interaction.user.id, embed)
             try:
@@ -80,6 +90,10 @@ class RecordingScore(commands.Cog, DatabaseBase):
         await forward_recording(
             fch, interaction.user, [], embed=embed, source_channel=interaction.channel, kind="f",
         )
+        try:
+            await interaction.channel.send(SUBMITTED_MSG)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
     async def on_interview_audio(self, message: discord.Message, audio_attachments: list):
         """面接チャンネルに録音が投稿されたとき呼ぶ。プロフィールが揃っていれば転送。"""
@@ -107,7 +121,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         )
         self._mark_done(message.author.id)
         try:
-            await message.channel.send("✅ 録音を受け付けました。運営の審査に回りました。")
+            await message.channel.send(SUBMITTED_MSG)
         except (discord.Forbidden, discord.HTTPException):
             pass
 
