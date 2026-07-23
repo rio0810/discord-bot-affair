@@ -61,6 +61,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                 fch, interaction.user, audio, embed=embed,
                 source_channel=interaction.channel, kind="m",
             )
+            self._mark_done(interaction.user.id)
         else:
             self._store_pending(interaction.user.id, embed)
             try:
@@ -84,6 +85,8 @@ class RecordingScore(commands.Cog, DatabaseBase):
         """面接チャンネルに録音が投稿されたとき呼ぶ。プロフィールが揃っていれば転送。"""
         pending = self._pop_pending(message.author.id)
         if pending is None:
+            if self._is_done(message.author.id):
+                return  # 既に審査へ回済み → 催促しない
             # プロフィール未作成 → 録音は受け付けつつ、プロフィール作成を催促
             try:
                 await message.channel.send(
@@ -102,6 +105,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
             fch, message.author, audio_attachments, embed=embed,
             source_channel=message.channel, kind="m",
         )
+        self._mark_done(message.author.id)
         try:
             await message.channel.send("✅ 録音を受け付けました。運営の審査に回りました。")
         except (discord.Forbidden, discord.HTTPException):
@@ -130,6 +134,28 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     conn.commit()
         except Exception as e:
             print(f"[ERROR] 待機プロフィールの保存に失敗しました: {e}")
+
+    def _mark_done(self, user_id: int):
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO interview_done (user_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                        (user_id,),
+                    )
+                    conn.commit()
+        except Exception as e:
+            print(f"[ERROR] 審査済みフラグの記録に失敗しました: {e}")
+
+    def _is_done(self, user_id: int) -> bool:
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM interview_done WHERE user_id = %s", (user_id,))
+                    return cur.fetchone() is not None
+        except Exception as e:
+            print(f"[ERROR] 審査済みフラグの取得に失敗しました: {e}")
+            return False
 
     def _pop_pending(self, user_id: int):
         try:
@@ -177,6 +203,11 @@ class RecordingScore(commands.Cog, DatabaseBase):
                         CREATE TABLE IF NOT EXISTS pending_interview (
                             user_id BIGINT PRIMARY KEY,
                             embed_json TEXT NOT NULL
+                        )
+                    """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS interview_done (
+                            user_id BIGINT PRIMARY KEY
                         )
                     """)
                     conn.commit()

@@ -59,6 +59,10 @@ CREATE TABLE IF NOT EXISTS pending_interview (
     user_id BIGINT PRIMARY KEY,
     embed_json TEXT NOT NULL
 );
+-- 審査へ回済みの人（録音先行時の催促を止める判定用）
+CREATE TABLE IF NOT EXISTS interview_done (
+    user_id BIGINT PRIMARY KEY
+);
 
 -- 8. MPチケットで作成した個人テキストチャット（1人1つまで判定用）
 CREATE TABLE IF NOT EXISTS mp_text_channels (
