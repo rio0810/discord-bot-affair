@@ -42,6 +42,7 @@ Copy `.env.example` to `.env` and fill in:
 | `WAITING_ROLE_ID` / `WAITING_CATEGORY_ID` | `waiting_room.py`: auto-assigns the waiting role on join; hides every category except `WAITING_CATEGORY_ID` (visible category is view-only, no send); removed when the role is taken away |
 | `REVIEW_ROLE_ID` | Role removed on 合格 verdict (defaults to `WAITING_ROLE_ID` if unset). On 合格 the reviewer removes it and adds `NEWCOMER_ROLE_ID`; on 不合格 the user is banned. Verdict button lives on the 審査結果 panel |
 | `MALE_PROFILE_CHANNEL_ID` / `FEMALE_PROFILE_CHANNEL_ID` | On 合格, the bot posts in the member's personal interview/profile channel (DM fallback) directing them to write their profile in the gender-matching channel here (male via `MALE_ROLE_ID`, female via `FEMALE_ROLE_ID`) |
+| `GUIDELINE_CHANNEL_ID` | Guideline channel linked in the 合格 message so the member checks the server info (optional) |
 | `CALL_CATEGORY_ID` | Category ID for created call rooms (optional) |
 | `CALL_LOG_CHANNEL_ID` | Channel ID for call-matching accept/decline logs (no logging if unset) |
 | `MAX_ROOMS_PER_FEMALE` / `MAX_ROOMS_PER_MALE` | Max concurrent call rooms per user (default 2) |
