@@ -131,7 +131,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         where = f"{profile_channel.mention} に" if profile_channel is not None else ""
         guideline = guild.get_channel(self.guideline_channel_id) if self.guideline_channel_id else None
         guide_line = (
-            f"📖 あわせて {guideline.mention} を確認し、サーバーについて把握してください。\n"
+            f"📖 サーバーについては {guideline.mention} を確認するようにお願いします。\n"
             if guideline is not None else ""
         )
         text = (
