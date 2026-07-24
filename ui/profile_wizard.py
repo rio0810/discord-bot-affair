@@ -158,8 +158,13 @@ def build_profile_embed(
     user: discord.abc.User, name: str, hobby: str, fav_type: str, answers: dict[str, str]
 ) -> discord.Embed:
     lines = [f"名前：{name}"]
-    lines += [f"{label}：{answers.get(label, '未回答')}" for label, _ in FIELDS]
-    description = "\n".join(lines) + f"\n\n【趣味】\n{hobby}\n\n【好きなタイプ】\n{fav_type}"
+    for label, _ in FIELDS:
+        lines.append(f"{label}：{answers.get(label, '未回答')}")
+        # 身長の直後に「好きなタイプ」「趣味」を差し込む
+        if label == "身長":
+            lines.append(f"\n【好きなタイプ】\n{fav_type}\n")
+            lines.append(f"【趣味】\n{hobby}\n")
+    description = "\n".join(lines)
 
     embed = discord.Embed(
         title=f"📋 {name} さんのプロフィール",
