@@ -739,7 +739,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
         guild = interaction.guild
         recruiter = interaction.user
 
-        title = f"⏳ お試し通話（{TRIAL_DURATION_MINUTES}分）のお誘い" if trial else "📞 1対1通話のお誘い"
+        title = f"⏳ お試し通話（{TRIAL_DURATION_MINUTES}分）のお誘い" if trial else "📞 個通のお誘い"
         embed = discord.Embed(
             title=title,
             description=message,
