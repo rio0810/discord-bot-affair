@@ -285,6 +285,30 @@ class RecordingScore(commands.Cog, DatabaseBase):
             print(f"[ERROR] 審査済みフラグの取得に失敗しました: {e}")
             return False
 
+    def mark_profile_created(self, user_id: int):
+        """プロフィール作成済みとして記録（2回目の作成を防ぐ）。"""
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO profile_created (user_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                        (user_id,),
+                    )
+                    conn.commit()
+        except Exception as e:
+            print(f"[ERROR] プロフィール作成フラグの記録に失敗しました: {e}")
+
+    def has_profile(self, user_id: int) -> bool:
+        """プロフィールを作成済みか。DB失敗時は False（作成を許可＝フェイルオープン）。"""
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM profile_created WHERE user_id = %s", (user_id,))
+                    return cur.fetchone() is not None
+        except Exception as e:
+            print(f"[ERROR] プロフィール作成フラグの取得に失敗しました: {e}")
+            return False
+
     def _pop_pending(self, user_id: int):
         try:
             with self.get_db() as conn:
@@ -341,6 +365,11 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS interview_verdicts (
                             submitter_id BIGINT PRIMARY KEY
+                        )
+                    """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS profile_created (
+                            user_id BIGINT PRIMARY KEY
                         )
                     """)
                     conn.commit()

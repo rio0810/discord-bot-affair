@@ -67,6 +67,10 @@ CREATE TABLE IF NOT EXISTS interview_done (
 CREATE TABLE IF NOT EXISTS interview_verdicts (
     submitter_id BIGINT PRIMARY KEY
 );
+-- プロフィール作成済みの人（2回目の作成を防ぐ）
+CREATE TABLE IF NOT EXISTS profile_created (
+    user_id BIGINT PRIMARY KEY
+);
 
 -- 8. MPチケットで作成した個人テキストチャット（1人1つまで判定用）
 CREATE TABLE IF NOT EXISTS mp_text_channels (

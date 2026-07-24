@@ -404,6 +404,8 @@ class ProfileWizardView(discord.ui.View):
         # 審査への送信
         cog = interaction.client.get_cog("RecordingScore")
         if cog is not None:
+            # 作成済みとして記録（2回目の作成をブロック）
+            cog.mark_profile_created(interaction.user.id)
             if self.is_male:
                 # 男性は録音との待ち合わせ（録音が既にあれば審査へ、無ければ待機）
                 await cog.on_profile_created(interaction, embed)
@@ -527,6 +529,14 @@ async def _start_profile_wizard(interaction: discord.Interaction):
     if owner_id != str(interaction.user.id):
         await interaction.response.send_message(
             "❌ このボタンはチャンネルの本人のみ使用できます。", ephemeral=True
+        )
+        return
+    # プロフィールは1人1回のみ（作成済みなら2回目を拒否）
+    cog = interaction.client.get_cog("RecordingScore")
+    if cog is not None and cog.has_profile(interaction.user.id):
+        await interaction.response.send_message(
+            "❌ プロフィールは既に作成済みです。作り直したい場合は運営にご連絡ください。",
+            ephemeral=True,
         )
         return
     # 男性（面接）チャンネルなら録音ファイルの提出欄を出す
