@@ -123,8 +123,8 @@ class VerdictModal(discord.ui.Modal, title="合否判定"):
         self.submitter_id = submitter_id
         self.verdict = discord.ui.RadioGroup(
             options=[
-                discord.RadioGroupOption(label="合格", value="pass", emoji="✅"),
-                discord.RadioGroupOption(label="不合格", value="fail", emoji="❌"),
+                discord.RadioGroupOption(label="✅ 合格", value="pass"),
+                discord.RadioGroupOption(label="❌ 不合格", value="fail"),
             ],
             required=True,
         )
