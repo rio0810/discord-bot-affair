@@ -33,9 +33,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         self.bot = bot
         self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID", "0"))
         self.forward_channel_id = int(os.getenv("RECORDING_FORWARD_CHANNEL_ID") or "0")
-        # 審査の送信先フォーラム（設定時はユーザー名で新規ポストを作成）
-        # 男女で分けたい場合は MALE/FEMALE を設定。共通で使う場合は RECORDING_FORUM_CHANNEL_ID
-        self.forum_channel_id = int(os.getenv("RECORDING_FORUM_CHANNEL_ID") or "0")
+        # 審査の送信先フォーラム（設定時はユーザー名で新規ポストを作成・男女別）
         self.forum_male_id = int(os.getenv("RECORDING_FORUM_MALE_ID") or "0")
         self.forum_female_id = int(os.getenv("RECORDING_FORUM_FEMALE_ID") or "0")
         # 合否判定で操作するロール（審査ロールは未設定なら待機ロールを使う）
@@ -152,13 +150,12 @@ class RecordingScore(commands.Cog, DatabaseBase):
             print(f"[ERROR] 合格案内の送信に失敗しました ({member.id}): {e}")
 
     def _forward_channel(self, kind: str = "m"):
-        # 種別に応じたフォーラムを優先。無ければ共通フォーラム、最後にテキストチャンネル。
+        # 種別に応じた男女別フォーラムを優先。無ければテキストチャンネル。
         forum_id = self.forum_female_id if kind == "f" else self.forum_male_id
-        for fid in (forum_id, self.forum_channel_id):
-            if fid:
-                ch = self.bot.get_channel(fid)
-                if isinstance(ch, discord.ForumChannel):
-                    return ch
+        if forum_id:
+            ch = self.bot.get_channel(forum_id)
+            if isinstance(ch, discord.ForumChannel):
+                return ch
         ch = self.bot.get_channel(self.forward_channel_id) if self.forward_channel_id else None
         return ch if isinstance(ch, (discord.TextChannel, discord.Thread)) else None
 
