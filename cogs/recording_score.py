@@ -41,6 +41,12 @@ class RecordingScore(commands.Cog, DatabaseBase):
         # 合否判定で操作するロール（審査ロールは未設定なら待機ロールを使う）
         self.review_role_id = int(os.getenv("REVIEW_ROLE_ID") or os.getenv("WAITING_ROLE_ID") or "0")
         self.newcomer_role_id = int(os.getenv("NEWCOMER_ROLE_ID") or "0")
+        # 性別判定用ロール
+        self.male_role_id = int(os.getenv("MALE_ROLE_ID") or "0")
+        self.female_role_id = int(os.getenv("FEMALE_ROLE_ID") or "0")
+        # 合格後にプロフィールを書いてもらう性別別チャンネル
+        self.male_profile_channel_id = int(os.getenv("MALE_PROFILE_CHANNEL_ID") or "0")
+        self.female_profile_channel_id = int(os.getenv("FEMALE_PROFILE_CHANNEL_ID") or "0")
 
     async def cog_load(self):
         self._ensure_tables()
@@ -83,6 +89,8 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     "❌ ロールの変更に失敗しました（Botの権限・ロール順を確認してください）。", ephemeral=True
                 )
                 return
+            # 合格者本人のチャンネルへ、性別ごとのプロフィールチャンネルへの案内を送る
+            await self._notify_profile_channel(guild, member)
             await interaction.response.send_message(
                 f"✅ {member.mention} を **合格** にしました。（審査ロール解除・新人ロール付与）"
             )
@@ -105,6 +113,35 @@ class RecordingScore(commands.Cog, DatabaseBase):
             await interaction.response.send_message(
                 f"🔨 <@{submitter_id}> を **不合格** としてBANしました。"
             )
+
+    async def _notify_profile_channel(self, guild: discord.Guild, member: discord.Member):
+        """合格者に、性別ごとのプロフィールチャンネルへの記入を案内する。
+        本人の面接・プロフ用チャンネルへ送り、無ければDMにフォールバックする。"""
+        # 性別に応じた投稿先プロフィールチャンネルを決定
+        if self.female_role_id and guild.get_role(self.female_role_id) in member.roles:
+            channel_id = self.female_profile_channel_id
+        elif self.male_role_id and guild.get_role(self.male_role_id) in member.roles:
+            channel_id = self.male_profile_channel_id
+        else:
+            channel_id = 0
+        profile_channel = guild.get_channel(channel_id) if channel_id else None
+
+        where = f"{profile_channel.mention} に" if profile_channel is not None else ""
+        text = (
+            f"🎉 {member.mention} 審査に合格しました！おめでとうございます🎉\n"
+            f"次は {where}あなたのプロフィールを記入してください。"
+        )
+
+        # 送信先：本人の面接・プロフ用チャンネル（topic で判定）
+        targets = {f"interview_room:{member.id}", f"profile_room:{member.id}"}
+        personal = discord.utils.find(lambda c: c.topic in targets, guild.text_channels)
+        try:
+            if personal is not None:
+                await personal.send(text)
+            else:
+                await member.send(text)
+        except (discord.Forbidden, discord.HTTPException) as e:
+            print(f"[ERROR] 合格案内の送信に失敗しました ({member.id}): {e}")
 
     def _forward_channel(self, kind: str = "m"):
         # 種別に応じたフォーラムを優先。無ければ共通フォーラム、最後にテキストチャンネル。
