@@ -160,10 +160,10 @@ def build_profile_embed(
     lines = [f"名前：{name}"]
     for label, _ in FIELDS:
         lines.append(f"{label}：{answers.get(label, '未回答')}")
-        # 身長の直後に「好きなタイプ」「趣味」を差し込む
+        # 身長の直後に「好きなタイプ」「趣味」を差し込む（1行表記）
         if label == "身長":
-            lines.append(f"\n【好きなタイプ】\n{fav_type}\n")
-            lines.append(f"【趣味】\n{hobby}\n")
+            lines.append(f"好きなタイプ：{fav_type}")
+            lines.append(f"趣味：{hobby}")
     description = "\n".join(lines)
 
     embed = discord.Embed(
