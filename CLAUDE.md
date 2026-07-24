@@ -39,7 +39,8 @@ Copy `.env.example` to `.env` and fill in:
 | `SCORE_REVIEWER_COUNT` | How many reviewers must score a recording before the result is posted (default 4) |
 | `MALE_ROLE_ID` / `FEMALE_ROLE_ID` | Role IDs for the 1-on-1 call matching feature |
 | `NEWCOMER_ROLE_ID` | Members with this role can't use call matching (blocked from recruiting, hidden from target lists, and can't accept). Optional |
-| `WAITING_ROLE_ID` / `WAITING_CATEGORY_ID` | `waiting_room.py`: while a member has the waiting role, per-member `view_channel=False` overwrites hide every category except `WAITING_CATEGORY_ID`; removed when the role is taken away |
+| `WAITING_ROLE_ID` / `WAITING_CATEGORY_ID` | `waiting_room.py`: auto-assigns the waiting role on join; hides every category except `WAITING_CATEGORY_ID` (visible category is view-only, no send); removed when the role is taken away |
+| `REVIEW_ROLE_ID` | Role removed on 合格 verdict (defaults to `WAITING_ROLE_ID` if unset). On 合格 the reviewer removes it and adds `NEWCOMER_ROLE_ID`; on 不合格 the user is banned. Verdict button lives on the 審査結果 panel |
 | `CALL_CATEGORY_ID` | Category ID for created call rooms (optional) |
 | `CALL_LOG_CHANNEL_ID` | Channel ID for call-matching accept/decline logs (no logging if unset) |
 | `MAX_ROOMS_PER_FEMALE` / `MAX_ROOMS_PER_MALE` | Max concurrent call rooms per user (default 2) |

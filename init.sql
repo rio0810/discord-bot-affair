@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS pending_interview (
 CREATE TABLE IF NOT EXISTS interview_done (
     user_id BIGINT PRIMARY KEY
 );
+-- 合否判定済みの人（二重判定・二重BAN防止）
+CREATE TABLE IF NOT EXISTS interview_verdicts (
+    submitter_id BIGINT PRIMARY KEY
+);
 
 -- 8. MPチケットで作成した個人テキストチャット（1人1つまで判定用）
 CREATE TABLE IF NOT EXISTS mp_text_channels (

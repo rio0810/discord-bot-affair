@@ -114,6 +114,60 @@ def make_score_view(submitter_id: int, kind: str = "m") -> discord.ui.View:
     return view
 
 
+# ---------------------------------------------------------------------- #
+# 合否判定（審査結果パネルのボタン → RadioGroup モーダル）
+# ---------------------------------------------------------------------- #
+class VerdictModal(discord.ui.Modal, title="合否判定"):
+    def __init__(self, submitter_id: int):
+        super().__init__()
+        self.submitter_id = submitter_id
+        self.verdict = discord.ui.RadioGroup(
+            options=[
+                discord.RadioGroupOption(label="合格", value="pass", emoji="✅"),
+                discord.RadioGroupOption(label="不合格", value="fail", emoji="❌"),
+            ],
+            required=True,
+        )
+        self.add_item(discord.ui.Label(text="合否を選択してください", component=self.verdict))
+
+    async def on_submit(self, interaction: discord.Interaction):
+        cog = interaction.client.get_cog("RecordingScore")
+        if cog is None:
+            await interaction.response.send_message("❌ 現在この機能は利用できません。", ephemeral=True)
+            return
+        await cog.apply_verdict(interaction, self.submitter_id, self.verdict.value)
+
+
+class VerdictButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"verdict:(?P<submitter>[0-9]+)",
+):
+    def __init__(self, submitter_id: int):
+        self.submitter_id = submitter_id
+        super().__init__(
+            discord.ui.Button(
+                label="合否を出す",
+                style=discord.ButtonStyle.blurple,
+                emoji="⚖️",
+                custom_id=f"verdict:{submitter_id}",
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match):
+        return cls(int(match["submitter"]))
+
+    async def callback(self, interaction: discord.Interaction):
+        cog = interaction.client.get_cog("RecordingScore")
+        if cog is None:
+            await interaction.response.send_message("❌ 現在この機能は利用できません。", ephemeral=True)
+            return
+        if not cog.is_admin(interaction.user):
+            await interaction.response.send_message("❌ 合否判定は管理者のみ可能です。", ephemeral=True)
+            return
+        await interaction.response.send_modal(VerdictModal(self.submitter_id))
+
+
 async def forward_recording(
     forward_channel,
     submitter: discord.abc.User,

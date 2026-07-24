@@ -12,6 +12,7 @@ SUBMITTED_MSG = (
 )
 from ui.recording_score import (
     ScoreButton,
+    VerdictButton,
     SCORE_REVIEWER_COUNT,
     PASS_THRESHOLD,
     categories_for,
@@ -37,10 +38,69 @@ class RecordingScore(commands.Cog, DatabaseBase):
         self.forum_channel_id = int(os.getenv("RECORDING_FORUM_CHANNEL_ID") or "0")
         self.forum_male_id = int(os.getenv("RECORDING_FORUM_MALE_ID") or "0")
         self.forum_female_id = int(os.getenv("RECORDING_FORUM_FEMALE_ID") or "0")
+        # 合否判定で操作するロール（審査ロールは未設定なら待機ロールを使う）
+        self.review_role_id = int(os.getenv("REVIEW_ROLE_ID") or os.getenv("WAITING_ROLE_ID") or "0")
+        self.newcomer_role_id = int(os.getenv("NEWCOMER_ROLE_ID") or "0")
 
     async def cog_load(self):
         self._ensure_tables()
         self.bot.add_dynamic_items(ScoreButton)
+        self.bot.add_dynamic_items(VerdictButton)
+
+    def is_admin(self, member: discord.Member) -> bool:
+        if getattr(member, "guild_permissions", None) and member.guild_permissions.administrator:
+            return True
+        role = member.guild.get_role(self.admin_role_id) if self.admin_role_id else None
+        return role is not None and role in member.roles
+
+    async def apply_verdict(self, interaction: discord.Interaction, submitter_id: int, verdict: str):
+        guild = interaction.guild
+        # 二重判定を防ぐ（最初の1回だけ通す）
+        if not self._claim_verdict(submitter_id):
+            await interaction.response.send_message(
+                "この人の合否は既に処理済みです。", ephemeral=True
+            )
+            return
+
+        if verdict == "pass":
+            member = guild.get_member(submitter_id)
+            if member is None:
+                await interaction.response.send_message(
+                    "❌ 対象者がサーバーにいないため、ロールを変更できませんでした。", ephemeral=True
+                )
+                return
+            review_role = guild.get_role(self.review_role_id) if self.review_role_id else None
+            newcomer_role = guild.get_role(self.newcomer_role_id) if self.newcomer_role_id else None
+            try:
+                if review_role is not None and review_role in member.roles:
+                    await member.remove_roles(review_role, reason="審査合格：審査ロール解除")
+                if newcomer_role is not None and newcomer_role not in member.roles:
+                    await member.add_roles(newcomer_role, reason="審査合格：新人ロール付与")
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    "❌ ロールの変更に失敗しました（Botの権限・ロール順を確認してください）。", ephemeral=True
+                )
+                return
+            await interaction.response.send_message(
+                f"✅ {member.mention} を **合格** にしました。（審査ロール解除・新人ロール付与）"
+            )
+        else:  # fail → BAN
+            try:
+                await guild.ban(
+                    discord.Object(id=submitter_id),
+                    reason=f"審査 不合格（判定者: {interaction.user}）",
+                )
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    "❌ BANに失敗しました（Botのban権限・ロール順を確認してください）。", ephemeral=True
+                )
+                return
+            except discord.HTTPException as e:
+                await interaction.response.send_message(f"❌ BANに失敗しました：{e}", ephemeral=True)
+                return
+            await interaction.response.send_message(
+                f"🔨 <@{submitter_id}> を **不合格** としてBANしました。"
+            )
 
     def _forward_channel(self, kind: str = "m"):
         # 種別に応じたフォーラムを優先。無ければ共通フォーラム、最後にテキストチャンネル。
@@ -224,6 +284,11 @@ class RecordingScore(commands.Cog, DatabaseBase):
                             user_id BIGINT PRIMARY KEY
                         )
                     """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS interview_verdicts (
+                            submitter_id BIGINT PRIMARY KEY
+                        )
+                    """)
                     conn.commit()
         except Exception as e:
             print(f"[ERROR] recording_scores テーブルの作成に失敗しました: {e}")
@@ -266,6 +331,23 @@ class RecordingScore(commands.Cog, DatabaseBase):
 
         if count >= SCORE_REVIEWER_COUNT and self._claim_result(message_id):
             await self._post_result(interaction, message_id, submitter_id)
+
+    def _claim_verdict(self, submitter_id: int) -> bool:
+        """合否判定の権利を取る（1人につき最初の1回だけ True）。"""
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO interview_verdicts (submitter_id) VALUES (%s) "
+                        "ON CONFLICT DO NOTHING RETURNING submitter_id",
+                        (submitter_id,),
+                    )
+                    claimed = cur.fetchone() is not None
+                    conn.commit()
+                    return claimed
+        except Exception as e:
+            print(f"[ERROR] 合否判定フラグの取得に失敗しました: {e}")
+            return False
 
     def _claim_result(self, message_id: int) -> bool:
         """結果出力の権利を取る（複数回出力しないよう最初の1回だけ True）。"""
@@ -358,6 +440,11 @@ class RecordingScore(commands.Cog, DatabaseBase):
             container.add_item(discord.ui.TextDisplay(
                 "### ⚠️ 0点をつけた人\n" + "\n".join(zero_lines)
             ))
+        # 合否を出すボタン（管理者のみ操作可）
+        container.add_item(Sep(spacing=large))
+        row = discord.ui.ActionRow()
+        row.add_item(VerdictButton(submitter_id))
+        container.add_item(row)
         view.add_item(container)
 
         # 審査結果はフォーラムの審査ポスト（スレッド）内にだけ出す。テキストチャンネルには出さない。
