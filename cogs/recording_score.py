@@ -125,27 +125,35 @@ class RecordingScore(commands.Cog, DatabaseBase):
         else:
             channel_id = 0
         profile_channel = guild.get_channel(channel_id) if channel_id else None
+        guideline = guild.get_channel(self.guideline_channel_id) if self.guideline_channel_id else None
 
         where = f"{profile_channel.mention} に" if profile_channel is not None else ""
-        guideline = guild.get_channel(self.guideline_channel_id) if self.guideline_channel_id else None
-        guide_line = (
-            f"📖 サーバーについては {guideline.mention} を確認するようにお願いします。\n"
-            if guideline is not None else ""
-        )
-        text = (
-            f"🎉 {member.mention} 審査に合格しました！おめでとうございます🎉\n"
-            f"次は {where}あなたのプロフィールを記入してください。\n"
-            f"{guide_line}"
-        )
+        Sep = discord.ui.Separator
+        large = discord.SeparatorSpacing.large
+        view = discord.ui.LayoutView(timeout=None)
+        container = discord.ui.Container(accent_colour=discord.Colour.green())
+        container.add_item(discord.ui.TextDisplay("## 🎉 審査に合格しました！"))
+        container.add_item(Sep(spacing=large))
+        container.add_item(discord.ui.TextDisplay(
+            f"{member.mention} おめでとうございます🎉\n"
+            f"次は {where}あなたのプロフィールを記入してください。"
+        ))
+        if guideline is not None:
+            container.add_item(Sep(spacing=large))
+            container.add_item(discord.ui.TextDisplay(
+                f"📖 サーバーについては {guideline.mention} を確認するようにお願いします。"
+            ))
+        view.add_item(container)
 
+        allowed = discord.AllowedMentions(users=[member])
         # 送信先：本人の面接・プロフ用チャンネル（topic で判定）
         targets = {f"interview_room:{member.id}", f"profile_room:{member.id}"}
         personal = discord.utils.find(lambda c: c.topic in targets, guild.text_channels)
         try:
             if personal is not None:
-                await personal.send(text)
+                await personal.send(view=view, allowed_mentions=allowed)
             else:
-                await member.send(text)
+                await member.send(view=view)
         except (discord.Forbidden, discord.HTTPException) as e:
             print(f"[ERROR] 合格案内の送信に失敗しました ({member.id}): {e}")
 
