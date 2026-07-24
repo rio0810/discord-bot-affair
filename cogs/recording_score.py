@@ -65,6 +65,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         if verdict == "pass":
             member = guild.get_member(submitter_id)
             if member is None:
+                self._unclaim_verdict(submitter_id)
                 await interaction.response.send_message(
                     "❌ 対象者がサーバーにいないため、ロールを変更できませんでした。", ephemeral=True
                 )
@@ -77,6 +78,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                 if newcomer_role is not None and newcomer_role not in member.roles:
                     await member.add_roles(newcomer_role, reason="審査合格：新人ロール付与")
             except discord.Forbidden:
+                self._unclaim_verdict(submitter_id)
                 await interaction.response.send_message(
                     "❌ ロールの変更に失敗しました（Botの権限・ロール順を確認してください）。", ephemeral=True
                 )
@@ -91,11 +93,13 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     reason=f"審査 不合格（判定者: {interaction.user}）",
                 )
             except discord.Forbidden:
+                self._unclaim_verdict(submitter_id)
                 await interaction.response.send_message(
                     "❌ BANに失敗しました（Botのban権限・ロール順を確認してください）。", ephemeral=True
                 )
                 return
             except discord.HTTPException as e:
+                self._unclaim_verdict(submitter_id)
                 await interaction.response.send_message(f"❌ BANに失敗しました：{e}", ephemeral=True)
                 return
             await interaction.response.send_message(
@@ -348,6 +352,19 @@ class RecordingScore(commands.Cog, DatabaseBase):
         except Exception as e:
             print(f"[ERROR] 合否判定フラグの取得に失敗しました: {e}")
             return False
+
+    def _unclaim_verdict(self, submitter_id: int):
+        """判定処理が失敗したときにロックを解除して再判定できるようにする。"""
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM interview_verdicts WHERE submitter_id = %s",
+                        (submitter_id,),
+                    )
+                    conn.commit()
+        except Exception as e:
+            print(f"[ERROR] 合否判定フラグの解除に失敗しました: {e}")
 
     def _claim_result(self, message_id: int) -> bool:
         """結果出力の権利を取る（複数回出力しないよう最初の1回だけ True）。"""
