@@ -14,7 +14,7 @@ from core.db_base import DatabaseBase
 ROOM_TOPIC_PREFIX = "call_room:"
 # 1ページあたりの Select 表示人数（Discord の上限は25）
 PAGE_SIZE = 25
-# お試し通話の制限時間（分）と、終了前の警告タイミング（残り分数）
+# お試し個通の制限時間（分）と、終了前の警告タイミング（残り分数）
 TRIAL_DURATION_MINUTES = 30
 TRIAL_WARNING_REMAINING = 5
 
@@ -54,10 +54,10 @@ class TargetSelect(discord.ui.Select):
             )
             return
 
-        # お試し通話は同じ相手に1回まで（一覧表示後に履歴が増えた場合の再チェック）
+        # お試し個通は同じ相手に1回まで（一覧表示後に履歴が増えた場合の再チェック）
         if self.view.trial and target.id in cog.get_trial_invited_ids(interaction.user.id):
             await interaction.response.send_message(
-                f"❌ {target.display_name} さんには既にお試し通話のお誘いを送ったことがあるため、再度誘えません。",
+                f"❌ {target.display_name} さんには既にお試し個通のお誘いを送ったことがあるため、再度誘えません。",
                 ephemeral=True,
             )
             return
@@ -308,7 +308,7 @@ class CallPanelView(discord.ui.LayoutView):
             "- 承認されると、**2人だけの専用VC・テキストチャンネル** が作成されます。"
         )
         section(
-            "### ⏱️ お試し通話について\n"
+            "### ⏱️ お試し個通について\n"
             f"- VCに入ってから **{TRIAL_DURATION_MINUTES}分で自動終了** します。\n"
             f"- 残り{TRIAL_WARNING_REMAINING}分になると **Botが一時的にVCへ入室し、サウンドボードで通知** します。\n"
             "- お誘いは **同じ相手につき1回まで** です。"
@@ -374,7 +374,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
         self.log_channel_id = int(os.getenv("CALL_LOG_CHANNEL_ID", "0"))
         self.max_rooms_per_female = int(os.getenv("MAX_ROOMS_PER_FEMALE", "2"))
         self.max_rooms_per_male = int(os.getenv("MAX_ROOMS_PER_MALE", "2"))
-        # お試し通話の残り5分でVCに鳴らすサウンドボード（ID または 名前。未設定なら鳴らさない）
+        # お試し個通の残り5分でVCに鳴らすサウンドボード（ID または 名前。未設定なら鳴らさない）
         self.trial_warning_sound = os.getenv("TRIAL_WARNING_SOUND", "").strip()
         self.trial_watcher.start()
 
@@ -422,7 +422,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
             print(f"[ERROR] テーブルの作成に失敗しました: {e}")
 
     def get_trial_invited_ids(self, recruiter_id: int) -> set[int]:
-        """recruiter が過去にお試し通話へ誘った相手の ID 一覧。"""
+        """recruiter が過去にお試し個通へ誘った相手の ID 一覧。"""
         try:
             with self.get_db() as conn:
                 with conn.cursor() as cur:
@@ -432,7 +432,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     return {row[0] for row in cur.fetchall()}
         except Exception as e:
-            print(f"[ERROR] お試し通話履歴の取得に失敗しました: {e}")
+            print(f"[ERROR] お試し個通履歴の取得に失敗しました: {e}")
             return set()
 
     def record_trial_invite(self, recruiter_id: int, target_id: int):
@@ -446,7 +446,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] お試し通話履歴の記録に失敗しました: {e}")
+            print(f"[ERROR] お試し個通履歴の記録に失敗しました: {e}")
 
     # ------------------------------------------------------------------ #
     # ブロック（お互いにお誘い相手一覧へ表示されなくなる）
@@ -745,7 +745,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
             and room_counts.get(m.id, 0) < personal_limits.get(m.id, self.default_max_rooms(m))
         ]
         if trial:
-            # 一度お試し通話に誘った相手は一覧から除外
+            # 一度お試し個通に誘った相手は一覧から除外
             invited = self.get_trial_invited_ids(user.id)
             targets = [m for m in targets if m.id not in invited]
         if not targets:
@@ -753,7 +753,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
             return
 
         view = TargetSelectView(self, targets, trial=trial)
-        label = f"お試し通話（{TRIAL_DURATION_MINUTES}分）" if trial else "通話"
+        label = f"お試し個通（{TRIAL_DURATION_MINUTES}分）" if trial else "通話"
         await interaction.response.send_message(f"{label}に誘う相手を選んでください：", view=view, ephemeral=True)
 
     # ------------------------------------------------------------------ #
@@ -765,7 +765,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
         guild = interaction.guild
         recruiter = interaction.user
 
-        title = f"⏳ お試し通話（{TRIAL_DURATION_MINUTES}分）のお誘い" if trial else "📞 個通のお誘い"
+        title = f"⏳ お試し個通（{TRIAL_DURATION_MINUTES}分）のお誘い" if trial else "📞 個通のお誘い"
         embed = discord.Embed(
             title=title,
             description=message,
@@ -865,7 +865,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
             pass
 
         await self._send_log(
-            "✅ お試し通話成立" if trial else "✅ 通話成立",
+            "✅ お試し個通成立" if trial else "✅ 通話成立",
             recruiter, target, discord.Color.green(),
             extra=f"部屋: {text_channel.mention} / {voice_channel.mention}",
             request_message=self._extract_request_message(interaction),
@@ -901,7 +901,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
         if guild is not None:
             target = guild.get_member(interaction.user.id)
             await self._send_log(
-                "❌ お試し通話不成立（お断り）" if trial else "❌ 通話不成立（お断り）",
+                "❌ お試し個通不成立（お断り）" if trial else "❌ 通話不成立（お断り）",
                 recruiter, target or interaction.user, discord.Color.red(),
                 request_message=self._extract_request_message(interaction),
             )
@@ -1102,11 +1102,11 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
         )
         if trial:
             description += (
-                f"\n\n⏳ **この部屋はお試し通話です。VCに入ってから{TRIAL_DURATION_MINUTES}分で自動終了します**"
+                f"\n\n⏳ **この部屋はお試し個通です。VCに入ってから{TRIAL_DURATION_MINUTES}分で自動終了します**"
                 f"（残り{TRIAL_WARNING_REMAINING}分で通知します）。"
             )
         embed = discord.Embed(
-            title=f"⏳ お試し通話部屋（{TRIAL_DURATION_MINUTES}分）" if trial else "📞 1対1通話部屋",
+            title=f"⏳ お試し個通部屋（{TRIAL_DURATION_MINUTES}分）" if trial else "📞 1対1通話部屋",
             description=description,
             color=discord.Color.pink(),
         )
@@ -1153,7 +1153,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
         await channel.send(embed=embed)
 
     # ------------------------------------------------------------------ #
-    # お試し通話の時間監視（残り5分で警告 → 30分で強制終了）
+    # お試し個通の時間監視（残り5分で警告 → 30分で強制終了）
     # ------------------------------------------------------------------ #
     @tasks.loop(minutes=1.0)
     async def trial_watcher(self):
@@ -1181,11 +1181,11 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     for c in (vc, ch):
                         if c is not None:
                             try:
-                                await c.delete(reason=f"お試し通話の制限時間（{TRIAL_DURATION_MINUTES}分）が経過")
+                                await c.delete(reason=f"お試し個通の制限時間（{TRIAL_DURATION_MINUTES}分）が経過")
                             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                                 pass
                     await self._send_log(
-                        f"⏰ お試し通話終了（{TRIAL_DURATION_MINUTES}分経過）",
+                        f"⏰ お試し個通終了（{TRIAL_DURATION_MINUTES}分経過）",
                         recruiter, target, discord.Color.orange(),
                     )
                 elif elapsed_min >= TRIAL_DURATION_MINUTES - TRIAL_WARNING_REMAINING and "warned" not in parts:
@@ -1193,7 +1193,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     mentions = " ".join(m.mention for m in (recruiter, target) if m is not None)
                     try:
                         await ch.send(
-                            f"{mentions} ⏳ このお試し通話は**あと約{TRIAL_WARNING_REMAINING}分**で自動終了します。"
+                            f"{mentions} ⏳ このお試し個通は**あと約{TRIAL_WARNING_REMAINING}分**で自動終了します。"
                         )
                         await ch.edit(topic=ch.topic + ":warned")
                     except (discord.Forbidden, discord.HTTPException):
@@ -1219,7 +1219,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
         return discord.utils.get(sounds, name=self.trial_warning_sound)
 
     async def _play_warning_sound(self, guild: discord.Guild, vc_id: int):
-        """お試し通話のVCに残り5分のサウンドを鳴らす（Botが一時的にVCへ参加して送信）。"""
+        """お試し個通のVCに残り5分のサウンドを鳴らす（Botが一時的にVCへ参加して送信）。"""
         if not self.trial_warning_sound or not vc_id:
             return
         channel = guild.get_channel(vc_id)
@@ -1257,7 +1257,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
         before: discord.VoiceState,
         after: discord.VoiceState,
     ):
-        """お試し通話の VC に最初の人が入ったらタイマーを開始する。"""
+        """お試し個通の VC に最初の人が入ったらタイマーを開始する。"""
         if member.bot or after.channel is None or before.channel == after.channel:
             return
 
@@ -1275,7 +1275,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
             try:
                 await ch.edit(topic=ch.topic + f":start={start_ts}")
                 await ch.send(
-                    f"⏳ お試し通話を開始しました。**{TRIAL_DURATION_MINUTES}分後**に自動終了します"
+                    f"⏳ お試し個通を開始しました。**{TRIAL_DURATION_MINUTES}分後**に自動終了します"
                     f"（残り{TRIAL_WARNING_REMAINING}分で通知します）。"
                 )
             except (discord.Forbidden, discord.HTTPException):

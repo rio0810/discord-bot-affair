@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     user_name TEXT
 );
 
--- 2. お試し通話の誘った履歴（同じ相手を2度誘えないようにする）
+-- 2. お試し個通の誘った履歴（同じ相手を2度誘えないようにする）
 CREATE TABLE IF NOT EXISTS trial_invites (
     recruiter_id BIGINT NOT NULL,
     target_id BIGINT NOT NULL,
