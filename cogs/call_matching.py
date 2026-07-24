@@ -286,45 +286,59 @@ class CallPanelView(discord.ui.LayoutView):
 
     def __init__(self, cog: "CallMatchingCog"):
         super().__init__(timeout=None)
+        large = discord.SeparatorSpacing.large
+
+        def section(text: str):
+            container.add_item(discord.ui.Separator(spacing=large))
+            container.add_item(discord.ui.TextDisplay(text))
+
         container = discord.ui.Container(accent_colour=discord.Colour.pink())
         container.add_item(discord.ui.TextDisplay("## 📞 個通申請パネル"))
-        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
+        container.add_item(discord.ui.Separator(spacing=large))
         container.add_item(
             discord.ui.TextDisplay(
                 "⚠️ **新人ロールが付いている間は個通をご利用いただけません。**\n\n"
                 "下のボタンから、通話したい相手を選んで個通のお誘いを送れます。"
-                "詳細の利用方法は動画をご確認ください。\n\n"
-                "## 基本の流れ\n\n"
-                "- ボタンを押してお誘いのメッセージを入力すると、**Botが代理で相手にお誘いを送信** し、相手に **受ける / 断る** を選んでもらいます。\n"
-                "- 承認されると、**2人だけの専用VC・テキストチャンネル** が作成されます。\n\n"
-                "## お試し通話について\n\n"
-                f"- VCに入ってから **{TRIAL_DURATION_MINUTES}分で自動終了** します"
-                f"- 残り{TRIAL_WARNING_REMAINING}分になると **Botが一時的にVCへ入室し、サウンドボードで通知** します。\n"
-                "- お誘いは **同じ相手につき1回まで** です。\n\n"
-                "## ブロック・制限機能\n\n"
-                "- **ブロック編集** でチェックを入れた相手とは、お互いにお誘い相手の一覧に"
-                "表示されなくなります（チェックを外せばいつでも解除可）。\n"
-                "- お誘いを **断る** と、その相手は自動でブロックされます（ブロック編集から解除可能）。\n"
-                "- **人数制限** で、自分が同時に持てる部屋を **1件** に制限できます"
-                "（個通部屋を1件以上持っているときのみ設定可・もう一度押すと解除）。\n"
-                f"- 同時に持てる通話部屋は **男性{cog.max_rooms_per_male}件 / "
-                f"女性{cog.max_rooms_per_female}件** までです。\n\n"
-                "## お誘い相手の一覧に表示されない条件\n\n"
-                "次のいずれかに当てはまる相手は、お誘い先のリストに表示されません。\n"
-                "- 雑談のみのロールが付いている\n"
-                "- お互いにブロックしている\n"
-                "- すでに個通部屋を **2件以上**（お試し個通の部屋も含む）持っている\n"
-                "- 個通部屋を **1件のみ** に制限している\n"
-                "- 自分と **同性**\n"
-                "- 一度こちらのお誘いを断っている（断ると自動的に相手をブロックします。**ブロック編集** から解除できます）\n\n"
-                "リストに出てこない場合は、お試し個通の上限に達している可能性があります。"
-                "少し時間をおいてから、もう一度申請してみてください。\n"
-                "※ ブロックされていても、個通のお誘いリストに出てこないだけです。"
-                "通常のVCやチャットでは今までどおり見えます。"
+                "詳細の利用方法は動画をご確認ください。"
             )
         )
+        section(
+            "### 🔰 基本の流れ\n"
+            "- ボタンを押してお誘いのメッセージを入力すると、**Botが代理で相手にお誘いを送信** し、相手に **受ける / 断る** を選んでもらいます。\n"
+            "- 承認されると、**2人だけの専用VC・テキストチャンネル** が作成されます。"
+        )
+        section(
+            "### ⏱️ お試し通話について\n"
+            f"- VCに入ってから **{TRIAL_DURATION_MINUTES}分で自動終了** します。\n"
+            f"- 残り{TRIAL_WARNING_REMAINING}分になると **Botが一時的にVCへ入室し、サウンドボードで通知** します。\n"
+            "- お誘いは **同じ相手につき1回まで** です。"
+        )
+        section(
+            "### 🚫 ブロック・制限機能\n"
+            "- **ブロック編集** でチェックを入れた相手とは、お互いにお誘い相手の一覧に"
+            "表示されなくなります（チェックを外せばいつでも解除可）。\n"
+            "- お誘いを **断る** と、その相手は自動でブロックされます（ブロック編集から解除可能）。\n"
+            "- **人数制限** で、自分が同時に持てる部屋を **1件** に制限できます"
+            "（個通部屋を1件以上持っているときのみ設定可・もう一度押すと解除）。\n"
+            f"- 同時に持てる通話部屋は **男性{cog.max_rooms_per_male}件 / "
+            f"女性{cog.max_rooms_per_female}件** までです。"
+        )
+        section(
+            "### 👀 お誘い相手の一覧に表示されない条件\n"
+            "次のいずれかに当てはまる相手は、お誘い先のリストに表示されません。\n"
+            "- 雑談のみのロールが付いている\n"
+            "- お互いにブロックしている\n"
+            "- すでに個通部屋を **2件以上**（お試し個通の部屋も含む）持っている\n"
+            "- 個通部屋を **1件のみ** に制限している\n"
+            "- 自分と **同性**\n"
+            "- 一度こちらのお誘いを断っている（断ると自動的に相手をブロックします。**ブロック編集** から解除できます）\n\n"
+            "リストに出てこない場合は、お試し個通の上限に達している可能性があります。"
+            "少し時間をおいてから、もう一度申請してみてください。\n"
+            "※ ブロックされていても、個通のお誘いリストに出てこないだけです。"
+            "通常のVCやチャットでは今までどおり見えます。"
+        )
         # 文章とボタンの間の余白（線は表示しない）
-        container.add_item(discord.ui.Separator(visible=False, spacing=discord.SeparatorSpacing.large))
+        container.add_item(discord.ui.Separator(visible=False, spacing=large))
         container.add_item(CallPanelActions(cog))
         container.add_item(CallPanelSettingsActions(cog))
         self.add_item(container)
