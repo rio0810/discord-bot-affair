@@ -4,7 +4,7 @@ from discord import app_commands
 import os
 
 from core.admin_base import AdminCogBase
-from ui.profile_wizard import ProfileStartView, RoomPanelView, _hide_category_from_role
+from ui.profile_wizard import ProfileStartView, RoomPanelView
 from ui.recording_score import is_audio
 
 # 作成したチャンネルの topic に埋め込むプレフィックス（種別・所有者の識別用）
@@ -27,10 +27,6 @@ class AppealPanelActions(discord.ui.ActionRow):
     async def button_b(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.cog.handle_profile(interaction)
 
-    @discord.ui.button(label="雑談", style=discord.ButtonStyle.gray, emoji="💬", custom_id="persistent:appeal_c")
-    async def button_c(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.cog.handle_casual(interaction)
-
 
 class AppealPanelView(discord.ui.LayoutView):
     """受付パネル"""
@@ -44,8 +40,7 @@ class AppealPanelView(discord.ui.LayoutView):
             discord.ui.TextDisplay(
                 "下のボタンを押すと、あなた専用のチャンネルが作成されます。\n\n"
                 "🎤 **男性**：録音での面接あり\n"
-                "📝 **女性**：プロフィール審査のみ\n"
-                "💬 **雑談**：短縮プロフィールのみ（恋愛目的なしの方向け）"
+                "📝 **女性**：プロフィール審査のみ"
             )
         )
         # 文章とボタンの間の余白（線は表示しない）
@@ -64,8 +59,6 @@ class InterviewRoomCog(commands.Cog):
         self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID", "0"))
         self.male_role_id = int(os.getenv("MALE_ROLE_ID", "0"))
         self.female_role_id = int(os.getenv("FEMALE_ROLE_ID", "0"))
-        # 雑談ロール（0割ロール）。雑談ボタンで付与し、短縮プロフィールにする
-        self.zero_romance_role_id = int(os.getenv("ZERO_ROMANCE_ROLE_ID") or "0")
         self.category_id = int(os.getenv("INTERVIEW_ROOM_CATEGORY_ID", "0"))
         # 録音の転送先（未設定なら転送は行われない）
         self.forward_channel_id = int(os.getenv("RECORDING_FORWARD_CHANNEL_ID", "0"))
@@ -120,23 +113,6 @@ class InterviewRoomCog(commands.Cog):
             colour=discord.Colour.blurple(),
             role_id=self.female_role_id, opposite_role_id=self.male_role_id,
         )
-
-    async def handle_casual(self, interaction: discord.Interaction):
-        await self._handle_button(
-            interaction, topic_prefix=PROFILE_TOPIC_PREFIX, name_emoji="💬",
-            title="💬 プロフィールの記載（雑談）",
-            description=(
-                "**雑談での参加ありがとうございます！**\n\n"
-                "下のボタンを押して、簡単なプロフィール"
-                "（名前・年齢・血液型・居住地・趣味・MBTI）を投稿してください。"
-            ),
-            colour=discord.Colour.teal(),
-            role_id=self.zero_romance_role_id, opposite_role_id=0,
-        )
-        # 雑談ロールから恋愛カテゴリを非表示（ロール単位・初回のみ設定）
-        role = interaction.guild.get_role(self.zero_romance_role_id) if self.zero_romance_role_id else None
-        if role is not None:
-            await _hide_category_from_role(interaction.guild, role)
 
     async def _handle_button(
         self,

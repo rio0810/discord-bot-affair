@@ -444,8 +444,34 @@ class ProfileWizardView(discord.ui.View):
         if self.disability:
             await _send_staff_private_note(interaction, self.disability)
 
-        # 恋愛の割合の選択に応じて 雑談 / 恋愛 ロールを付与
-        await self._apply_romance_roles(interaction)
+        # ロール付与：雑談は雑談ロール、恋愛は「恋愛の割合」に応じて
+        if self.casual:
+            await self._apply_casual_role(interaction)
+        else:
+            await self._apply_romance_roles(interaction)
+
+    async def _apply_casual_role(self, interaction: discord.Interaction):
+        """雑談プロフィール選択時：恋愛ロールを外して雑談ロールを付与し、恋愛カテゴリを非表示。"""
+        guild = interaction.guild
+        member = interaction.user
+        if guild is None or not isinstance(member, discord.Member) or not ZERO_ROMANCE_ROLE_ID:
+            return
+        zero_role = guild.get_role(ZERO_ROMANCE_ROLE_ID)
+        romance_role = guild.get_role(ROMANCE_ROLE_ID) if ROMANCE_ROLE_ID else None
+        if zero_role is None:
+            return
+        if romance_role is not None and romance_role in member.roles:
+            try:
+                await member.remove_roles(romance_role, reason="雑談プロフィール選択")
+            except (discord.Forbidden, discord.HTTPException):
+                print(f"[ERROR] 恋愛ロールの除去に失敗しました: {member.id}")
+        if zero_role not in member.roles:
+            try:
+                await member.add_roles(zero_role, reason="雑談プロフィール選択")
+            except (discord.Forbidden, discord.HTTPException):
+                print(f"[ERROR] 雑談ロールの付与に失敗しました: {member.id}")
+                return
+        await _hide_category_from_role(guild, zero_role)
 
     async def _apply_romance_roles(self, interaction: discord.Interaction):
         """恋愛の割合が「0割」→雑談ロール、「1割以上」→恋愛ロールを付与（両者は排他）。"""
@@ -553,6 +579,23 @@ async def _send_staff_private_note(interaction: discord.Interaction, disability:
 # ---------------------------------------------------------------------- #
 # 「プロフィールを作成する」ボタン（専用チャンネルに設置される永続ビュー）
 # ---------------------------------------------------------------------- #
+class ProfileTypeChoiceView(discord.ui.View):
+    """作成ボタンの後に「雑談 / 恋愛」を選ばせる（ephemeral）。
+    雑談 → 短縮プロフィール、恋愛 → 通常プロフィール。"""
+
+    def __init__(self, is_male: bool):
+        super().__init__(timeout=300)
+        self.is_male = is_male
+
+    @discord.ui.button(label="雑談", style=discord.ButtonStyle.gray, emoji="💬")
+    async def casual_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ProfileModal(is_male=self.is_male, casual=True))
+
+    @discord.ui.button(label="恋愛", style=discord.ButtonStyle.red, emoji="❤️")
+    async def romance_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ProfileModal(is_male=self.is_male, casual=False))
+
+
 async def _start_profile_wizard(interaction: discord.Interaction):
     """所有者チェックをして Modal を開く（View / ActionRow 両方のボタンから共用）。"""
     # チャンネルの topic 末尾（<prefix>:<owner_id>）から所有者を判定
@@ -573,13 +616,14 @@ async def _start_profile_wizard(interaction: discord.Interaction):
         return
     # 男性（面接）チャンネルなら録音ファイルの提出欄を出す
     is_male = topic.startswith(INTERVIEW_TOPIC_PREFIX)
-    # 雑談ロール保持者は短縮プロフィール
-    casual = (
-        bool(ZERO_ROMANCE_ROLE_ID)
-        and isinstance(interaction.user, discord.Member)
-        and any(r.id == ZERO_ROMANCE_ROLE_ID for r in interaction.user.roles)
+    # 先に「雑談 / 恋愛」を選ばせ、雑談なら短縮プロフィールにする
+    await interaction.response.send_message(
+        "プロフィールの種類を選んでください：\n"
+        "💬 **雑談**：短縮プロフィール（名前・年齢・血液型・居住地・趣味・MBTI）\n"
+        "❤️ **恋愛**：通常プロフィール",
+        view=ProfileTypeChoiceView(is_male=is_male),
+        ephemeral=True,
     )
-    await interaction.response.send_modal(ProfileModal(is_male=is_male, casual=casual))
 
 
 class ProfileStartView(discord.ui.View):
