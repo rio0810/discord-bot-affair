@@ -618,9 +618,9 @@ async def _start_profile_wizard(interaction: discord.Interaction):
     is_male = topic.startswith(INTERVIEW_TOPIC_PREFIX)
     # 先に「雑談 / 恋愛」を選ばせ、雑談なら短縮プロフィールにする
     await interaction.response.send_message(
-        "プロフィールの種類を選んでください：\n"
-        "💬 **雑談**：短縮プロフィール（名前・年齢・血液型・居住地・趣味・MBTI）\n"
-        "❤️ **恋愛**：通常プロフィール",
+        "このサーバーでの目的を選んでください：\n"
+        "💬 **雑談**：雑談のみを楽しみたい方\n"
+        "❤️ **恋愛**：雑談しつつ恋愛も楽しみたい方",
         view=ProfileTypeChoiceView(is_male=is_male),
         ephemeral=True,
     )
