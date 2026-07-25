@@ -1,3 +1,4 @@
+import asyncio
 import math
 import os
 
@@ -159,6 +160,25 @@ async def _hide_category_from_role(guild: discord.Guild, role: discord.Role):
         )
     except (discord.Forbidden, discord.HTTPException):
         print(f"[ERROR] カテゴリ非表示の設定に失敗しました: category={ZERO_ROMANCE_HIDDEN_CATEGORY_ID}")
+
+
+async def _apply_choice_role(guild: discord.Guild, member: discord.Member, casual: bool):
+    """入口の「雑談 / 恋愛」選択に応じてロールを付与（両者は排他）。
+    雑談なら恋愛ロールを外して雑談ロール＋恋愛カテゴリ非表示、恋愛ならその逆。"""
+    if guild is None or not isinstance(member, discord.Member):
+        return
+    zero_role = guild.get_role(ZERO_ROMANCE_ROLE_ID) if ZERO_ROMANCE_ROLE_ID else None
+    romance_role = guild.get_role(ROMANCE_ROLE_ID) if ROMANCE_ROLE_ID else None
+    grant, remove = (zero_role, romance_role) if casual else (romance_role, zero_role)
+    try:
+        if remove is not None and remove in member.roles:
+            await member.remove_roles(remove, reason="プロフィール種別（雑談/恋愛）の選択")
+        if grant is not None and grant not in member.roles:
+            await member.add_roles(grant, reason="プロフィール種別（雑談/恋愛）の選択")
+    except (discord.Forbidden, discord.HTTPException):
+        print(f"[ERROR] 種別ロールの付与に失敗しました: {member.id}")
+    if casual and zero_role is not None:
+        await _hide_category_from_role(guild, zero_role)
 
 
 def build_profile_text(
@@ -457,72 +477,7 @@ class ProfileWizardView(discord.ui.View):
         # 障害・ハンデの申告があれば運営チャンネルにのみ共有（公開しない）
         if self.disability:
             await _send_staff_private_note(interaction, self.disability)
-
-        # ロール付与：雑談は雑談ロール、恋愛は「恋愛の割合」に応じて
-        if self.casual:
-            await self._apply_casual_role(interaction)
-        else:
-            await self._apply_romance_roles(interaction)
-
-    async def _apply_casual_role(self, interaction: discord.Interaction):
-        """雑談プロフィール選択時：恋愛ロールを外して雑談ロールを付与し、恋愛カテゴリを非表示。"""
-        guild = interaction.guild
-        member = interaction.user
-        if guild is None or not isinstance(member, discord.Member) or not ZERO_ROMANCE_ROLE_ID:
-            return
-        zero_role = guild.get_role(ZERO_ROMANCE_ROLE_ID)
-        romance_role = guild.get_role(ROMANCE_ROLE_ID) if ROMANCE_ROLE_ID else None
-        if zero_role is None:
-            return
-        if romance_role is not None and romance_role in member.roles:
-            try:
-                await member.remove_roles(romance_role, reason="雑談プロフィール選択")
-            except (discord.Forbidden, discord.HTTPException):
-                print(f"[ERROR] 恋愛ロールの除去に失敗しました: {member.id}")
-        if zero_role not in member.roles:
-            try:
-                await member.add_roles(zero_role, reason="雑談プロフィール選択")
-            except (discord.Forbidden, discord.HTTPException):
-                print(f"[ERROR] 雑談ロールの付与に失敗しました: {member.id}")
-                return
-        await _hide_category_from_role(guild, zero_role)
-
-    async def _apply_romance_roles(self, interaction: discord.Interaction):
-        """恋愛の割合が「0割」→雑談ロール、「1割以上」→恋愛ロールを付与（両者は排他）。"""
-        answer = self.answers.get("恋愛の割合")
-        if answer is None:
-            return
-        guild = interaction.guild
-        member = interaction.user
-        if guild is None or not isinstance(member, discord.Member):
-            return
-
-        zero_role = guild.get_role(ZERO_ROMANCE_ROLE_ID) if ZERO_ROMANCE_ROLE_ID else None
-        romance_role = guild.get_role(ROMANCE_ROLE_ID) if ROMANCE_ROLE_ID else None
-
-        if answer == "0割":
-            grant, remove = zero_role, romance_role
-        else:
-            grant, remove = romance_role, zero_role
-
-        # 反対のロールを外す
-        if remove is not None and remove in member.roles:
-            try:
-                await member.remove_roles(remove, reason="恋愛の割合の選択に伴うロール整理")
-            except (discord.Forbidden, discord.HTTPException):
-                print(f"[ERROR] ロールの除去に失敗しました: {remove.id} -> {member.id}")
-
-        # 対応するロールを付与
-        if grant is not None and grant not in member.roles:
-            try:
-                await member.add_roles(grant, reason="プロフィールの恋愛の割合の選択によるロール付与")
-            except (discord.Forbidden, discord.HTTPException):
-                print(f"[ERROR] ロールの付与に失敗しました: {grant.id} -> {member.id}")
-                return
-
-        # 雑談ロールのときは指定カテゴリを非表示に
-        if answer == "0割" and zero_role is not None:
-            await _hide_category_from_role(guild, zero_role)
+        # ロール付与は入口の「雑談 / 恋愛」選択時に済ませているのでここでは行わない
 
 
 # ---------------------------------------------------------------------- #
@@ -603,10 +558,13 @@ class ProfileTypeChoiceView(discord.ui.View):
 
     @discord.ui.button(label="雑談", style=discord.ButtonStyle.gray, emoji="💬")
     async def casual_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # ロール付与はここで実施（モーダル表示を遅らせないよう背景で処理）
+        asyncio.create_task(_apply_choice_role(interaction.guild, interaction.user, casual=True))
         await interaction.response.send_modal(ProfileModal(is_male=self.is_male, casual=True))
 
     @discord.ui.button(label="恋愛", style=discord.ButtonStyle.red, emoji="❤️")
     async def romance_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        asyncio.create_task(_apply_choice_role(interaction.guild, interaction.user, casual=False))
         await interaction.response.send_modal(ProfileModal(is_male=self.is_male, casual=False))
 
 
