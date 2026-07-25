@@ -267,7 +267,7 @@ class ProfileWizardView(discord.ui.View):
             if self.mbti_group is None:
                 return f"{header}\n**MBTI** の大項目を選んでください（未診断の方は「やっていない」）："
             return f"{header}\n**MBTI（{self.mbti_group}）** のタイプを選んでください："
-        optional_note = "（任意・スキップ可）" if label in OPTIONAL_FIELDS else ""
+        optional_note = "**（任意・スキップ可）**" if label in OPTIONAL_FIELDS else ""
         prompt = f"{header}\n**{label}** を選んでください{optional_note}："
         if label == "恋愛の割合" and ZERO_ROMANCE_ROLE_ID:
             prompt += (
