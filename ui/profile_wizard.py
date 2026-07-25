@@ -154,9 +154,8 @@ async def _hide_category_from_role(guild: discord.Guild, role: discord.Role):
         print(f"[ERROR] カテゴリ非表示の設定に失敗しました: category={ZERO_ROMANCE_HIDDEN_CATEGORY_ID}")
 
 
-def build_profile_embed(
-    user: discord.abc.User, name: str, hobby: str, fav_type: str, answers: dict[str, str]
-) -> discord.Embed:
+def build_profile_text(name: str, hobby: str, fav_type: str, answers: dict[str, str]) -> str:
+    """プロフィールの本文テキスト（コピペ用・embed の description と共通）。"""
     lines = [f"名前：{name}"]
     for label, _ in FIELDS:
         lines.append(f"{label}：{answers.get(label, '未回答')}")
@@ -164,11 +163,15 @@ def build_profile_embed(
         if label == "身長":
             lines.append(f"好きなタイプ：{fav_type}")
             lines.append(f"趣味：{hobby}")
-    description = "\n".join(lines)
+    return "\n".join(lines)
 
+
+def build_profile_embed(
+    user: discord.abc.User, name: str, hobby: str, fav_type: str, answers: dict[str, str]
+) -> discord.Embed:
     embed = discord.Embed(
         title=f"📋 {name} さんのプロフィール",
-        description=description,
+        description=build_profile_text(name, hobby, fav_type, answers),
         color=discord.Color.pink(),
     )
     embed.set_thumbnail(url=user.display_avatar.url)
@@ -395,9 +398,12 @@ class ProfileWizardView(discord.ui.View):
             content="✅ プロフィールを投稿しました！", embed=None, view=None
         )
 
-        # プロフィールをチャンネルへ投稿
+        # 本人のチャンネルへは、コピペしやすいよう素のテキストで投稿（embed は審査用に温存）
+        profile_text = build_profile_text(self.name, self.hobby, self.fav_type, self.answers)
         try:
-            await interaction.channel.send(content=interaction.user.mention, embed=embed)
+            await interaction.channel.send(
+                content=profile_text, allowed_mentions=discord.AllowedMentions.none()
+            )
         except (discord.Forbidden, discord.HTTPException) as e:
             print(f"[ERROR] プロフィールの投稿に失敗しました: {e}")
 
