@@ -72,7 +72,7 @@ FIELDS: list[tuple[str, list[str]]] = [
     ("休日", ["土日", "平日", "不定期", "休職中"]),
     ("お酒", ["飲まない", "飲む", "時々飲む"]),
     ("タバコ", ["吸わない", "吸う", "相手が嫌ならやめる"]),
-    ("寝落ちの可否", ["可", "仲良くなってから", "恋人になってから", "否"]),
+    ("寝落ちの可否", ["可","否" "仲良くなってから", "恋人になってから"]),
     ("恋愛の割合", [f"{i}割" for i in range(0, 11)]),
     ("遠距離恋愛出来る範囲", ["遠距離", "中距離", "近距離"]),
     ("MBTI", MBTI_TYPES),
@@ -89,6 +89,9 @@ MBTI_GROUPS: dict[str, list[str]] = {
 }
 # 大項目の選択肢（5つめが「やっていない」）
 MBTI_MAJOR_OPTIONS: list[str] = list(MBTI_GROUPS.keys()) + [_MBTI_NONE]
+
+# 任意項目（選択せずスキップ可能）。未選択なら「未回答」表示になる
+OPTIONAL_FIELDS: set[str] = {"職種", "同居人"}
 
 # 名前付きの分割（機械的な均等分割ではなく、意味のある区分で Select を分けたい項目）
 NAMED_CHUNKS: dict[str, list[tuple[str, list[str]]]] = {
@@ -206,15 +209,18 @@ class RadioStepModal(discord.ui.Modal):
         self.wizard = wizard
         self.radios: dict[str, discord.ui.RadioGroup] = {}
         for label in labels:
+            optional = label in OPTIONAL_FIELDS
             radio = discord.ui.RadioGroup(
                 options=[
                     # 「戻る」で再入力するときは前回の選択をデフォルト表示
                     discord.RadioGroupOption(label=o, default=(wizard.answers.get(label) == o))
                     for o in FIELD_OPTIONS[label]
-                ]
+                ],
+                required=not optional,
             )
             self.radios[label] = radio
-            self.add_item(discord.ui.Label(text=label, component=radio))
+            text = f"{label}（任意）" if optional else label
+            self.add_item(discord.ui.Label(text=text, component=radio))
 
     async def on_submit(self, interaction: discord.Interaction):
         for label, radio in self.radios.items():
@@ -261,7 +267,8 @@ class ProfileWizardView(discord.ui.View):
             if self.mbti_group is None:
                 return f"{header}\n**MBTI** の大項目を選んでください（未診断の方は「やっていない」）："
             return f"{header}\n**MBTI（{self.mbti_group}）** のタイプを選んでください："
-        prompt = f"{header}\n**{label}** を選んでください："
+        optional_note = "（任意・スキップ可）" if label in OPTIONAL_FIELDS else ""
+        prompt = f"{header}\n**{label}** を選んでください{optional_note}："
         if label == "恋愛の割合" and ZERO_ROMANCE_ROLE_ID:
             prompt += (
                 "\n⚠️ **0割** を選ぶと **雑談** ロールが付与され、"
@@ -334,6 +341,19 @@ class ProfileWizardView(discord.ui.View):
 
             select.callback = on_select
             self.add_item(select)
+
+        # 任意項目は「スキップ」ボタンで未選択のまま次へ
+        if label in OPTIONAL_FIELDS:
+            skip_btn = discord.ui.Button(label="スキップ", style=discord.ButtonStyle.gray, emoji="⏭️")
+
+            async def on_skip(interaction: discord.Interaction):
+                self.answers.pop(label, None)
+                self.index += 1
+                self._rebuild()
+                await self._refresh(interaction)
+
+            skip_btn.callback = on_skip
+            self.add_item(skip_btn)
 
         if self.index > 0:
             back_btn = discord.ui.Button(label="戻る", style=discord.ButtonStyle.gray, emoji="◀")
@@ -526,7 +546,7 @@ class ProfileModal(discord.ui.Modal, title="プロフィール作成"):
     )
     # 公開せず運営のみで共有する任意項目
     disability = discord.ui.TextInput(
-        label="【質問】現在抱えている障害やハンデはございますか？",
+        label="【任意】現在抱えている障害やハンデはございますか？",
         style=discord.TextStyle.paragraph,
         required=False,
         max_length=500,
