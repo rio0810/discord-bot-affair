@@ -201,16 +201,35 @@ async def forward_recording(
         print(f"[ERROR] 録音ファイルの取得に失敗しました: {e}")
         files = []
 
-    # フォーラムなら「ユーザー名」で新規ポストを作成、テキストなら通常メッセージ
-    if isinstance(forward_channel, discord.ForumChannel):
-        try:
+    def add_audio_links():
+        """アップロード容量超過時：音声を再添付せず、CDNリンクで案内する。"""
+        if not attachments:
+            return
+        links = "\n".join(f"[{a.filename}]({a.url})" for a in attachments)
+        embed.add_field(name="🎧 音声ファイル（リンク）", value=links[:1024], inline=False)
+
+    async def _post(files_to_send):
+        # フォーラムなら「ユーザー名」で新規ポスト、テキストなら通常メッセージ
+        if isinstance(forward_channel, discord.ForumChannel):
             await forward_channel.create_thread(
                 name=getattr(submitter, "display_name", str(submitter))[:100],
-                embed=embed,
-                files=files,
-                view=view,
+                embed=embed, files=files_to_send, view=view,
             )
-        except (discord.Forbidden, discord.HTTPException) as e:
+        else:
+            await forward_channel.send(embed=embed, files=files_to_send, view=view)
+
+    try:
+        await _post(files)
+    except discord.HTTPException as e:
+        # 413（容量超過）はファイルを外してリンク化して再送
+        if e.status == 413:
+            print(f"[WARN] 音声が容量上限を超えたためリンクに切り替えます: {e}")
+            add_audio_links()
+            try:
+                await _post([])
+            except (discord.Forbidden, discord.HTTPException) as e2:
+                print(f"[ERROR] 審査フォーラムへの投稿に失敗しました（リンク化後）: {e2}")
+        else:
             print(f"[ERROR] 審査フォーラムへの投稿に失敗しました: {e}")
-    else:
-        await forward_channel.send(embed=embed, files=files, view=view)
+    except discord.Forbidden as e:
+        print(f"[ERROR] 審査フォーラムへの投稿に失敗しました: {e}")
