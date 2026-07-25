@@ -26,12 +26,25 @@ class DiscordBot(commands.Bot):
                     path = os.path.join(root, filename)
                     ext_path = path.replace("./", "").replace("/", ".").replace("\\", ".")[:-3]
                     await self.load_extension(ext_path)
-        await self.tree.sync()
+        try:
+            await self.tree.sync()
+        except discord.HTTPException as e:
+            print(f"[WARN] グローバルコマンドの同期に失敗しました: {e}")
 
-        # そのサーバー専用に同期
-        self.tree.copy_global_to(guild=MY_GUILD)
-        await self.tree.sync(guild=MY_GUILD)
-        print("Slash commands synced!")
+        # そのサーバー専用に同期（失敗してもBotは起動を続ける）
+        try:
+            self.tree.copy_global_to(guild=MY_GUILD)
+            await self.tree.sync(guild=MY_GUILD)
+            print("Slash commands synced!")
+        except discord.Forbidden as e:
+            print(
+                "[WARN] ギルドコマンドの同期に失敗しました（Missing Access）。"
+                "MY_GUILD のサーバーにBotが参加しているか、"
+                "applications.commands スコープ付きで招待されているかを確認してください: "
+                f"{e}"
+            )
+        except discord.HTTPException as e:
+            print(f"[WARN] ギルドコマンドの同期に失敗しました: {e}")
 
     async def on_ready(self):
         print(f'Logged in as {self.user} (ID: {self.user.id})')
