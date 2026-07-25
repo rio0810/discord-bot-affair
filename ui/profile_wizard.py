@@ -268,13 +268,7 @@ class ProfileWizardView(discord.ui.View):
                 return f"{header}\n**MBTI** の大項目を選んでください（未診断の方は「やっていない」）："
             return f"{header}\n**MBTI（{self.mbti_group}）** のタイプを選んでください："
         optional_note = "**（任意・スキップ可）**" if label in OPTIONAL_FIELDS else ""
-        prompt = f"{header}\n**{label}** を選んでください{optional_note}："
-        if label == "恋愛の割合" and ZERO_ROMANCE_ROLE_ID:
-            prompt += (
-                "\n⚠️ **0割** を選ぶと **雑談** ロールが付与され、"
-                "**個通部屋が使えなくなります**のでご注意ください。"
-            )
-        return prompt
+        return f"{header}\n**{label}** を選んでください{optional_note}："
 
     def _rebuild(self):
         self.clear_items()
@@ -640,7 +634,9 @@ async def _start_profile_wizard(interaction: discord.Interaction):
     await interaction.response.send_message(
         "このサーバーでの目的を選んでください：\n"
         "💬 **雑談**：雑談のみを楽しみたい方\n"
-        "❤️ **恋愛**：雑談しつつ恋愛も楽しみたい方",
+        "❤️ **恋愛**：雑談しつつ恋愛も楽しみたい方\n\n"
+        "⚠️ **雑談** を選ぶと **雑談ロール** が付与され、"
+        "**個通部屋が使えなくなります**のでご注意ください。",
         view=ProfileTypeChoiceView(is_male=is_male),
         ephemeral=True,
     )
