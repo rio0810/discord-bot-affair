@@ -50,8 +50,45 @@ RULES_TEXT = """\
 - 通報があった場合、関係者との面談による事実確認を行います。必要に応じて管理者権限の行使や運営からの個別DMでのご連絡を行う場合がありますので、ご協力をお願いします。"""
 
 
+# 入室までの流れ（Discordの見出し/引用/区切り記法をそのまま利用）
+JOIN_GUIDE_TEXT = """\
+# 入室までの流れ
+
+ようこそ！ご参加ありがとうございます✨
+下の流れに沿って進めてください🙌
+
+## 1️⃣ サーバーに参加
+参加すると自動で **待機ロール** が付きます。
+
+## 2️⃣ パネルから性別を選ぶ
+案内パネルの **♂ 男性 / ♀ 女性** ボタンを押してください
+→ **あなた専用のチャンネル** が作られます
+
+## 3️⃣ プロフィールを作成
+専用チャンネルの **「📝 プロフィールを作成する」** ボタンから、
+質問に沿って入力・選択してください✍️
+
+## 4️⃣ 録音を提出（♂ 男性のみ）
+男性の方は、**🎤 音声ファイル** または **Discordの録音機能** で
+録音を専用チャンネルに投稿してください🎙️
+> ♀ 女性の方は不要です
+
+## 5️⃣ 運営の確認を待つ
+提出内容を運営が確認します🔍
+不合格の場合は無言キックになるのでご了承下さい
+**確認が終わるまで最長24時間ほどお時間をいただくので少々お待ちください**
+
+## 6️⃣ 入室完了 🎉
+確認が済むと ⏳ 待機ロールが外れ、
+**🔓 サーバー全体が見られるように** なります🎊
+
+---
+
+❓ わからないことがあれば、遠慮なく運営までお声がけください💬"""
+
+
 class Rules(commands.Cog):
-    """サーバールールを embed で掲示するコマンド。"""
+    """サーバールール・入室の流れを embed で掲示するコマンド。"""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -66,6 +103,17 @@ class Rules(commands.Cog):
         )
         await interaction.channel.send(embed=embed)
         await interaction.response.send_message("ルールを掲示しました。", ephemeral=True)
+
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
+    @app_commands.command(name="join_guide", description="【管理者専用】入室までの流れをembedで掲示します")
+    async def join_guide(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            description=JOIN_GUIDE_TEXT,
+            color=discord.Color.from_str("#7BD389"),  # やわらかい緑
+        )
+        await interaction.channel.send(embed=embed)
+        await interaction.response.send_message("入室までの流れを掲示しました。", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
