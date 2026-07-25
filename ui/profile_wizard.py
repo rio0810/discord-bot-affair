@@ -128,6 +128,10 @@ def _build_steps() -> list[tuple]:
 
 STEPS = _build_steps()
 
+# 雑談ロール向けの短縮ステップ（名前・趣味は入口Modal、残りをここで選択）
+CASUAL_STEP_LABELS = ["年齢", "血液型", "居住地", "MBTI"]
+CASUAL_STEPS = [("select", label, FIELD_OPTIONS[label]) for label in CASUAL_STEP_LABELS]
+
 
 def _chunk_options(options: list[str]) -> list[list[str]]:
     """25個を超える選択肢を、できるだけ均等な複数の Select に分割する。"""
@@ -154,8 +158,21 @@ async def _hide_category_from_role(guild: discord.Guild, role: discord.Role):
         print(f"[ERROR] カテゴリ非表示の設定に失敗しました: category={ZERO_ROMANCE_HIDDEN_CATEGORY_ID}")
 
 
-def build_profile_text(name: str, hobby: str, fav_type: str, answers: dict[str, str]) -> str:
-    """プロフィールの本文テキスト（コピペ用・embed の description と共通）。"""
+def build_profile_text(
+    name: str, hobby: str, fav_type: str, answers: dict[str, str], casual: bool = False
+) -> str:
+    """プロフィールの本文テキスト（コピペ用・embed の description と共通）。
+    casual（雑談ロール）は 名前/年齢/血液型/居住地/趣味/MBTI の短縮版。"""
+    if casual:
+        return "\n".join([
+            f"名前：{name}",
+            f"年齢：{answers.get('年齢', '未回答')}",
+            f"血液型：{answers.get('血液型', '未回答')}",
+            f"居住地：{answers.get('居住地', '未回答')}",
+            f"趣味：{hobby}",
+            f"MBTI：{answers.get('MBTI', '未回答')}",
+        ])
+
     lines = [f"名前：{name}"]
     for label, _ in FIELDS:
         lines.append(f"{label}：{answers.get(label, '未回答')}")
@@ -167,11 +184,12 @@ def build_profile_text(name: str, hobby: str, fav_type: str, answers: dict[str, 
 
 
 def build_profile_embed(
-    user: discord.abc.User, name: str, hobby: str, fav_type: str, answers: dict[str, str]
+    user: discord.abc.User, name: str, hobby: str, fav_type: str,
+    answers: dict[str, str], casual: bool = False,
 ) -> discord.Embed:
     embed = discord.Embed(
         title=f"📋 {name} さんのプロフィール",
-        description=build_profile_text(name, hobby, fav_type, answers),
+        description=build_profile_text(name, hobby, fav_type, answers, casual),
         color=discord.Color.pink(),
     )
     embed.set_thumbnail(url=user.display_avatar.url)
@@ -211,7 +229,7 @@ class RadioStepModal(discord.ui.Modal):
 # 選択ウィザード（ephemeral・1ステップずつ進む）
 # ---------------------------------------------------------------------- #
 class ProfileWizardView(discord.ui.View):
-    def __init__(self, name: str, hobby: str, fav_type: str, disability="", is_male=False):
+    def __init__(self, name: str, hobby: str, fav_type: str, disability="", is_male=False, casual=False):
         super().__init__(timeout=900)
         self.name = name
         self.hobby = hobby
@@ -220,6 +238,9 @@ class ProfileWizardView(discord.ui.View):
         self.disability = disability
         # 男性なら録音との待ち合わせ（録音投稿＋プロフ作成で採点パネルを出す）
         self.is_male = is_male
+        # 雑談ロールなら短縮プロフ（名前/年齢/血液型/居住地/趣味/MBTI）
+        self.casual = casual
+        self.steps = CASUAL_STEPS if casual else STEPS
         self.answers: dict[str, str] = {}
         self.index = 0
         # MBTI の2段階選択で、大項目を選んだ後に保持する（None なら大項目の選択中）
@@ -228,10 +249,10 @@ class ProfileWizardView(discord.ui.View):
 
     @property
     def content(self) -> str:
-        if self.index >= len(STEPS):
+        if self.index >= len(self.steps):
             return "内容を確認して、よければ **投稿する** を押してください。"
-        step = STEPS[self.index]
-        header = f"📋 プロフィール作成（{self.index + 1}/{len(STEPS)}）"
+        step = self.steps[self.index]
+        header = f"📋 プロフィール作成（{self.index + 1}/{len(self.steps)}）"
         if step[0] == "modal":
             _, title, labels = step
             return f"{header}\nボタンを押して **{title}**（{'・'.join(labels)}）を入力してください："
@@ -251,7 +272,7 @@ class ProfileWizardView(discord.ui.View):
     def _rebuild(self):
         self.clear_items()
 
-        if self.index >= len(STEPS):
+        if self.index >= len(self.steps):
             # 確認ページ
             submit_btn = discord.ui.Button(label="投稿する", style=discord.ButtonStyle.green, emoji="✅")
             back_btn = discord.ui.Button(label="戻る", style=discord.ButtonStyle.gray, emoji="◀")
@@ -261,7 +282,7 @@ class ProfileWizardView(discord.ui.View):
             self.add_item(back_btn)
             return
 
-        step = STEPS[self.index]
+        step = self.steps[self.index]
 
         if step[0] == "modal":
             # RadioGroup をまとめた Modal を開くボタン
@@ -376,9 +397,9 @@ class ProfileWizardView(discord.ui.View):
 
     async def _refresh(self, interaction: discord.Interaction):
         embed = None
-        if self.index >= len(STEPS):
+        if self.index >= len(self.steps):
             embed = build_profile_embed(
-                interaction.user, self.name, self.hobby, self.fav_type, self.answers
+                interaction.user, self.name, self.hobby, self.fav_type, self.answers, self.casual
             )
         await interaction.response.edit_message(content=self.content, embed=embed, view=self)
 
@@ -389,7 +410,7 @@ class ProfileWizardView(discord.ui.View):
 
     async def _submit(self, interaction: discord.Interaction):
         embed = build_profile_embed(
-            interaction.user, self.name, self.hobby, self.fav_type, self.answers
+            interaction.user, self.name, self.hobby, self.fav_type, self.answers, self.casual
         )
 
         # まず応答（3秒以内）。以降の送信・転送は時間がかかっても良い
@@ -399,7 +420,7 @@ class ProfileWizardView(discord.ui.View):
         )
 
         # 本人のチャンネルへは、コピペしやすいよう素のテキストで投稿（embed は審査用に温存）
-        profile_text = build_profile_text(self.name, self.hobby, self.fav_type, self.answers)
+        profile_text = build_profile_text(self.name, self.hobby, self.fav_type, self.answers, self.casual)
         try:
             await interaction.channel.send(
                 content=profile_text, allowed_mentions=discord.AllowedMentions.none()
@@ -489,15 +510,20 @@ class ProfileModal(discord.ui.Modal, title="プロフィール作成"):
         ),
     )
 
-    def __init__(self, is_male: bool = False):
+    def __init__(self, is_male: bool = False, casual: bool = False):
         super().__init__()
         self.is_male = is_male
+        self.casual = casual
+        # 雑談ロールは「好きなタイプ」を尋ねない
+        if casual:
+            self.remove_item(self.fav_type)
 
     async def on_submit(self, interaction: discord.Interaction):
         # 録音はモーダルでは受け取らず、面接チャンネルへの投稿で提出する
+        fav = "" if self.casual else str(self.fav_type)
         view = ProfileWizardView(
-            str(self.name), str(self.hobby), str(self.fav_type),
-            disability=str(self.disability).strip(), is_male=self.is_male,
+            str(self.name), str(self.hobby), fav,
+            disability=str(self.disability).strip(), is_male=self.is_male, casual=self.casual,
         )
         await interaction.response.send_message(content=view.content, view=view, ephemeral=True)
 
@@ -547,7 +573,13 @@ async def _start_profile_wizard(interaction: discord.Interaction):
         return
     # 男性（面接）チャンネルなら録音ファイルの提出欄を出す
     is_male = topic.startswith(INTERVIEW_TOPIC_PREFIX)
-    await interaction.response.send_modal(ProfileModal(is_male=is_male))
+    # 雑談ロール保持者は短縮プロフィール
+    casual = (
+        bool(ZERO_ROMANCE_ROLE_ID)
+        and isinstance(interaction.user, discord.Member)
+        and any(r.id == ZERO_ROMANCE_ROLE_ID for r in interaction.user.roles)
+    )
+    await interaction.response.send_modal(ProfileModal(is_male=is_male, casual=casual))
 
 
 class ProfileStartView(discord.ui.View):
