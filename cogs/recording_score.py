@@ -12,6 +12,7 @@ SUBMITTED_MSG = (
 )
 from ui.recording_score import (
     ScoreButton,
+    ScoreStatusButton,
     VerdictButton,
     PASS_THRESHOLD,
     categories_for,
@@ -53,6 +54,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
     async def cog_load(self):
         self._ensure_tables()
         self.bot.add_dynamic_items(ScoreButton)
+        self.bot.add_dynamic_items(ScoreStatusButton)
         self.bot.add_dynamic_items(VerdictButton)
 
     def is_admin(self, member: discord.Member) -> bool:
@@ -116,6 +118,20 @@ class RecordingScore(commands.Cog, DatabaseBase):
         except Exception as e:
             print(f"[ERROR] 審査メンバーの削除に失敗しました: {e}")
             return False
+
+    def scored_reviewer_ids(self, message_id: int) -> set[int]:
+        """指定の審査メッセージに採点した人のID集合。"""
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT reviewer_id FROM recording_scores WHERE message_id = %s",
+                        (message_id,),
+                    )
+                    return {r[0] for r in cur.fetchall()}
+        except Exception as e:
+            print(f"[ERROR] 採点状況の取得に失敗しました: {e}")
+            return set()
 
     def _list_reviewers(self) -> list[int]:
         try:

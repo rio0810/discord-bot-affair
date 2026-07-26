@@ -112,10 +112,58 @@ class ScoreButton(
         )
 
 
+class ScoreStatusButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"rec_status:(?P<submitter>[0-9]+)",
+):
+    """この審査の採点状況（審査メンバーの採点済み・未採点）を表示するボタン。"""
+
+    def __init__(self, submitter_id: int):
+        self.submitter_id = submitter_id
+        super().__init__(
+            discord.ui.Button(
+                label="採点状況",
+                style=discord.ButtonStyle.grey,
+                emoji="👥",
+                custom_id=f"rec_status:{submitter_id}",
+            )
+        )
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match):
+        return cls(int(match["submitter"]))
+
+    async def callback(self, interaction: discord.Interaction):
+        cog = interaction.client.get_cog("RecordingScore")
+        if cog is None:
+            await interaction.response.send_message("❌ 現在この機能は利用できません。", ephemeral=True)
+            return
+        reviewers = cog._list_reviewers()
+        if not reviewers:
+            await interaction.response.send_message(
+                "審査メンバーが登録されていません。", ephemeral=True
+            )
+            return
+        scored = cog.scored_reviewer_ids(interaction.message.id)
+        done = [uid for uid in reviewers if uid in scored]
+        pending = [uid for uid in reviewers if uid not in scored]
+
+        done_txt = "\n".join(f"- <@{uid}>" for uid in done) or "- （まだいません）"
+        pending_txt = "\n".join(f"- <@{uid}>" for uid in pending) or "- （全員採点済み）"
+        await interaction.response.send_message(
+            f"**採点状況（{len(done)}/{len(reviewers)}人）**\n"
+            f"__✅ 採点済み__\n{done_txt}\n\n"
+            f"__⏳ 未採点__\n{pending_txt}",
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+
 def make_score_view(submitter_id: int, kind: str = "m") -> discord.ui.View:
     """審査メッセージに付ける採点ボタン入りのView。"""
     view = discord.ui.View(timeout=None)
     view.add_item(ScoreButton(submitter_id, kind))
+    view.add_item(ScoreStatusButton(submitter_id))
     return view
 
 
