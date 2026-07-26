@@ -31,6 +31,7 @@ Copy `.env.example` to `.env` and fill in:
 | `ZERO_ROMANCE_HIDDEN_CATEGORY_ID` | Category hidden (role-level `view_channel=False` overwrite) from `ZERO_ROMANCE_ROLE_ID` holders; set when the role is first granted (optional) |
 | `DM_OPEN_ROLE_ID` / `DM_CLOSED_ROLE_ID` / `DM_ACQUAINTED_ROLE_ID` | Roles auto-granted (mutually exclusive) from the profile wizard's 「DM・フレンド申請の基準」 select — 誰でもOK / DM× / 話したことあるなら respectively. Common to both 雑談 and 恋愛 profiles (optional) |
 | `ADMIN_ROLE_ID` | Role ID that can use admin commands |
+| `ERROR_LOG_CHANNEL_ID` | Text channel that `ERROR`+ logs are streamed to (via `core/log_to_discord.py`'s logging handler). Console/Railway logging still works regardless; no Discord streaming if unset (optional) |
 | `EXCLUDED_CHANNEL_IDS` | Comma-separated VC IDs excluded from VC-time tracking |
 | `VC_RANK_REDUCED_CATEGORY_IDS` | Comma-separated category IDs where VC time accrues at 1/3 rate (fractional carry) |
 | `INTERVIEW_ROOM_CATEGORY_ID` | Category ID under which per-member interview rooms are created (optional) |
@@ -40,7 +41,7 @@ Copy `.env.example` to `.env` and fill in:
 | `NEWCOMER_ROLE_ID` | Members with this role can't use call matching (blocked from recruiting, hidden from target lists, and can't accept). Optional |
 | `WAITING_ROLE_ID` / `WAITING_CATEGORY_ID` | `waiting_room.py`: auto-assigns the waiting role on join; hides every category except `WAITING_CATEGORY_ID` (visible category is view-only, no send); removed when the role is taken away |
 | `REVIEW_ROLE_ID` | Role removed on 合格 verdict (defaults to `WAITING_ROLE_ID` if unset). On 合格 the reviewer removes it and adds `NEWCOMER_ROLE_ID`; on 不合格 the user is banned. Verdict button lives on the 審査結果 panel |
-| `MALE_PROFILE_CHANNEL_ID` / `FEMALE_PROFILE_CHANNEL_ID` | On 合格, the bot posts in the member's personal interview/profile channel (DM fallback) directing them to write their profile in the gender-matching channel here (male via `MALE_ROLE_ID`, female via `FEMALE_ROLE_ID`) |
+| `MALE_PROFILE_CHANNEL_ID` / `FEMALE_PROFILE_CHANNEL_ID` | On 合格, the bot posts in the member's personal interview/profile channel (no DM fallback — skipped if the channel is missing) directing them to write their profile in the gender-matching channel here (male via `MALE_ROLE_ID`, female via `FEMALE_ROLE_ID`) |
 | `ZERO_ROMANCE_PROFILE_CHANNEL_ID` | On 合格, members holding `ZERO_ROMANCE_ROLE_ID` (雑談) are directed here instead of the gender channel — the 雑談-user-only profile channel (optional; takes priority over the gender-based channels) |
 | `GUIDELINE_CHANNEL_ID` | Guideline channel linked in the 合格 message so the member checks the server info (optional) |
 | `CALL_CATEGORY_ID` | Category ID for created call rooms (optional) |
@@ -52,7 +53,9 @@ Copy `.env.example` to `.env` and fill in:
 
 ## Architecture
 
-**Entry point:** `main.py` — creates the bot, recursively loads all cogs from `cogs/`, syncs slash commands globally and to `MY_GUILD`, then starts `server.py` (FastAPI health check on port 8080) in a background thread.
+**Entry point:** `main.py` — creates the bot, recursively loads all cogs from `cogs/`, syncs slash commands globally and to `MY_GUILD`, then starts `server.py` (FastAPI health check on port 8080) in a background thread. `setup_hook` also calls `setup_logging(self)` (`core/log_to_discord.py`) and `bot.run(..., log_handler=None)` so the app's own logging config wins.
+
+**Logging:** Use `logging` (module-level `logger = logging.getLogger(__name__)`), not `print`. `core/log_to_discord.py` adds a console handler (Railway logs) to the root logger, plus — when `ERROR_LOG_CHANNEL_ID` is set — a `DiscordLogHandler` that streams `ERROR`+ records to that channel. The handler queues records and flushes them on the bot loop (batched, failure-swallowing) to avoid rate-limit/recursion loops.
 
 **Cog loading:** Any `.py` file under `cogs/` with a `setup(bot)` function is loaded automatically. New features go in a new cog file.
 

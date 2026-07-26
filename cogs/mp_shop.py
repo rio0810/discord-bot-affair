@@ -1,3 +1,4 @@
+import logging
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
@@ -7,6 +8,9 @@ from datetime import datetime, timedelta
 
 from core.admin_base import AdminCogBase
 from core.db_base import DatabaseBase
+
+
+logger = logging.getLogger(__name__)
 
 # 交換に必要なチケット枚数
 TRIAL_RESET_COST = 20
@@ -169,7 +173,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     """)
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] mp_shop テーブルの作成に失敗しました: {e}")
+            logger.error(f"mp_shop テーブルの作成に失敗しました: {e}")
         self.mood_photo_checker.start()
 
     def cog_unload(self):
@@ -201,7 +205,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     cur.execute("DELETE FROM mood_photo_deadlines WHERE user_id = %s", (message.author.id,))
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 雰囲気写真ノルマのクリアに失敗しました: {e}")
+            logger.error(f"雰囲気写真ノルマのクリアに失敗しました: {e}")
 
     @staticmethod
     def _is_image(attachment: discord.Attachment) -> bool:
@@ -221,7 +225,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     )
                     expired = [r[0] for r in cur.fetchall()]
         except Exception as e:
-            print(f"[ERROR] 雰囲気写真の期限チェックに失敗しました: {e}")
+            logger.error(f"雰囲気写真の期限チェックに失敗しました: {e}")
             return
 
         for user_id in expired:
@@ -239,7 +243,7 @@ class MPShop(commands.Cog, DatabaseBase):
                         cur.execute("DELETE FROM mood_photo_deadlines WHERE user_id = %s", (user_id,))
                         conn.commit()
             except Exception as e:
-                print(f"[ERROR] 期限レコードの削除に失敗しました: {e}")
+                logger.error(f"期限レコードの削除に失敗しました: {e}")
 
     @mood_photo_checker.before_loop
     async def before_mood_photo_checker(self):
@@ -253,7 +257,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     cur.execute("SELECT channel_id FROM mp_text_channels WHERE user_id = %s", (user_id,))
                     row = cur.fetchone()
         except Exception as e:
-            print(f"[ERROR] 個人テキストチャットの確認に失敗しました: {e}")
+            logger.error(f"個人テキストチャットの確認に失敗しました: {e}")
             return None
         if not row:
             return None
@@ -270,7 +274,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 個人テキストチャットの記録に失敗しました: {e}")
+            logger.error(f"個人テキストチャットの記録に失敗しました: {e}")
 
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
@@ -343,7 +347,7 @@ class MPShop(commands.Cog, DatabaseBase):
         try:
             await channel.send(embed=embed)
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] MPログの送信に失敗しました: {e}")
+            logger.error(f"MPログの送信に失敗しました: {e}")
 
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
@@ -358,7 +362,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     )
                     rows = cur.fetchall()
         except Exception as e:
-            print(f"[ERROR] チケット一覧の取得に失敗しました: {e}")
+            logger.error(f"チケット一覧の取得に失敗しました: {e}")
             await interaction.followup.send("❌ 取得に失敗しました。")
             return
 
@@ -409,7 +413,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     conn.commit()
                     return new_balance
         except Exception as e:
-            print(f"[ERROR] チケットの増減に失敗しました: {e}")
+            logger.error(f"チケットの増減に失敗しました: {e}")
             return self.get_tickets(user_id)
 
     # ------------------------------------------------------------------ #
@@ -423,7 +427,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     row = cur.fetchone()
                     return row[0] if row else 0
         except Exception as e:
-            print(f"[ERROR] チケット残高の取得に失敗しました: {e}")
+            logger.error(f"チケット残高の取得に失敗しました: {e}")
             return 0
 
     def _spend(self, user_id: int, cost: int) -> bool:
@@ -440,7 +444,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     conn.commit()
                     return ok
         except Exception as e:
-            print(f"[ERROR] チケットの消費に失敗しました: {e}")
+            logger.error(f"チケットの消費に失敗しました: {e}")
             return False
 
     def _refund(self, user_id: int, cost: int):
@@ -453,7 +457,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] チケットの返還に失敗しました: {e}")
+            logger.error(f"チケットの返還に失敗しました: {e}")
 
     # ------------------------------------------------------------------ #
     # 交換処理
@@ -531,7 +535,7 @@ class MPShop(commands.Cog, DatabaseBase):
                 name=name, image=data, reason=f"MPチケット交換：{interaction.user} の絵文字追加"
             )
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 絵文字の追加に失敗しました: {e}")
+            logger.error(f"絵文字の追加に失敗しました: {e}")
             self._refund(interaction.user.id, EMOJI_COST)
             await interaction.followup.send(
                 "❌ 絵文字の追加に失敗しました（画像形式・サイズ、絵文字枠の空き、Botの権限をご確認ください）。"
@@ -566,7 +570,7 @@ class MPShop(commands.Cog, DatabaseBase):
         try:
             await member.add_roles(role, reason="MPチケット交換：雰囲気写真の閲覧権")
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 雰囲気写真ロールの付与に失敗しました: {e}")
+            logger.error(f"雰囲気写真ロールの付与に失敗しました: {e}")
             self._refund(member.id, MOOD_PHOTO_COST)
             await interaction.response.send_message(
                 "❌ ロールの付与に失敗しました。チケットは消費されていません。", ephemeral=True
@@ -585,7 +589,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 雰囲気写真ノルマの登録に失敗しました: {e}")
+            logger.error(f"雰囲気写真ノルマの登録に失敗しました: {e}")
 
         mood_ch = self._mood_channel(guild)
         where = mood_ch.mention if mood_ch else "「雰囲気写真」チャンネル"
@@ -609,7 +613,7 @@ class MPShop(commands.Cog, DatabaseBase):
                     cur.execute("DELETE FROM trial_invites WHERE recruiter_id = %s", (interaction.user.id,))
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] お試し個通のリセットに失敗しました: {e}")
+            logger.error(f"お試し個通のリセットに失敗しました: {e}")
             self._refund(interaction.user.id, TRIAL_RESET_COST)
             await interaction.response.send_message(
                 "❌ リセットに失敗しました。チケットは消費されていません。", ephemeral=True
@@ -658,7 +662,7 @@ class MPShop(commands.Cog, DatabaseBase):
                 reason=f"MPチケット交換：{member} の個人テキストチャット",
             )
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 個人テキストチャットの作成に失敗しました: {e}")
+            logger.error(f"個人テキストチャットの作成に失敗しました: {e}")
             self._refund(member.id, TEXT_CHANNEL_COST)
             await interaction.response.send_message(
                 "❌ チャンネル作成に失敗しました。チケットは消費されていません。", ephemeral=True
@@ -706,7 +710,7 @@ class MPShop(commands.Cog, DatabaseBase):
             )
             await member.add_roles(role, reason="MPチケット交換で作成したロールを付与")
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] ロールの作成/付与に失敗しました: {e}")
+            logger.error(f"ロールの作成/付与に失敗しました: {e}")
             self._refund(member.id, ROLE_CREATE_COST)
             await interaction.response.send_message(
                 "❌ ロールの作成に失敗しました。チケットは消費されていません。", ephemeral=True

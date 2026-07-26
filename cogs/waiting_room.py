@@ -1,7 +1,11 @@
+import logging
 import discord
 from discord.ext import commands
 import os
 
+
+
+logger = logging.getLogger(__name__)
 
 class WaitingRoom(commands.Cog):
     """待機ロールが付いている人を、指定カテゴリ以外から隔離する。
@@ -25,7 +29,7 @@ class WaitingRoom(commands.Cog):
         try:
             await member.add_roles(role, reason="サーバー参加時の待機ロール付与")
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 待機ロールの付与に失敗しました: {e}")
+            logger.error(f"待機ロールの付与に失敗しました: {e}")
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):

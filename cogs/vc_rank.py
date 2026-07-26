@@ -1,3 +1,4 @@
+import logging
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -8,6 +9,9 @@ import io
 import math, os
 from core.db_base import DatabaseBase
 from ui.rank_card import render_rank_card
+
+
+logger = logging.getLogger(__name__)
 
 class VCRank(commands.Cog, DatabaseBase):
     def __init__(self, bot):
@@ -49,7 +53,7 @@ class VCRank(commands.Cog, DatabaseBase):
                     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS user_name TEXT")
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] users のスキーマ準備に失敗しました: {e}")
+            logger.error(f"users のスキーマ準備に失敗しました: {e}")
 
     def cog_unload(self):
         # Cogがリロードされた時にタスクを停止させる
@@ -148,7 +152,7 @@ class VCRank(commands.Cog, DatabaseBase):
             """, (member.id, new_count, new_rank, member.display_name))
             conn.commit()
         except Exception as e:
-            print(f"Error in VCRank(text): {e}")
+            logger.error(f"Error in VCRank(text): {e}")
             conn.rollback()
         finally:
             cur.close()
@@ -224,7 +228,7 @@ class VCRank(commands.Cog, DatabaseBase):
             conn.commit()
 
         except Exception as e:
-            print(f"Error in VCRank: {e}")
+            logger.error(f"Error in VCRank: {e}")
             conn.rollback()
         finally:
             cur.close()
@@ -291,7 +295,7 @@ class VCRank(commands.Cog, DatabaseBase):
             file = discord.File(io.BytesIO(png), filename="rank.png")
             await interaction.followup.send(file=file)
         except Exception as e:
-            print(f"[ERROR] ランクカードの生成に失敗しました: {e}")
+            logger.error(f"ランクカードの生成に失敗しました: {e}")
             await interaction.followup.send(
                 f"**VCランク** — Rank {current_rank}（#{rank_pos}）/ 累計 {display_total}分 / "
                 f"次のランクまであと {max(0, next_req - display_total)}分"

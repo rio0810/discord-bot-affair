@@ -1,3 +1,4 @@
+import logging
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -10,6 +11,9 @@ from ui.profile_wizard import (
     ROMANCE_ROLE_ID,
     _hide_category_from_role,
 )
+
+
+logger = logging.getLogger(__name__)
 
 # ロール切り替えのクールタイム
 SWITCH_COOLDOWN = timedelta(days=14)
@@ -73,7 +77,7 @@ class RoleSwitch(commands.Cog, DatabaseBase):
                     """)
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] role_switch_cooldowns テーブルの作成に失敗しました: {e}")
+            logger.error(f"role_switch_cooldowns テーブルの作成に失敗しました: {e}")
 
     def _cooldown_remaining(self, user_id: int):
         """クールタイム中なら残り時間の文字列を返す。使用可能なら None。"""
@@ -83,7 +87,7 @@ class RoleSwitch(commands.Cog, DatabaseBase):
                     cur.execute("SELECT last_switch FROM role_switch_cooldowns WHERE user_id = %s", (user_id,))
                     row = cur.fetchone()
         except Exception as e:
-            print(f"[ERROR] クールタイム取得に失敗しました: {e}")
+            logger.error(f"クールタイム取得に失敗しました: {e}")
             return None
         if not row:
             return None
@@ -104,7 +108,7 @@ class RoleSwitch(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] クールタイム記録に失敗しました: {e}")
+            logger.error(f"クールタイム記録に失敗しました: {e}")
 
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
@@ -149,7 +153,7 @@ class RoleSwitch(commands.Cog, DatabaseBase):
                 await member.remove_roles(remove, reason="ロール切替パネルによる整理")
             await member.add_roles(grant, reason="ロール切替パネルによる付与")
         except discord.Forbidden:
-            print(f"[ERROR] ロール切替に失敗（権限不足）: {grant.id} -> {member.id}")
+            logger.error(f"ロール切替に失敗（権限不足）: {grant.id} -> {member.id}")
             await interaction.response.send_message(
                 "❌ ロールの変更に失敗しました。管理者にお問い合わせください。", ephemeral=True
             )

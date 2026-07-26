@@ -1,9 +1,13 @@
+import logging
 import discord
 from discord.ext import commands, tasks
 import os
 
 from core.db_base import DatabaseBase
 
+
+
+logger = logging.getLogger(__name__)
 
 class RenameModal(discord.ui.Modal, title="VC名を変更"):
     new_name = discord.ui.TextInput(
@@ -21,7 +25,7 @@ class RenameModal(discord.ui.Modal, title="VC名を変更"):
         try:
             await self.channel.edit(name=str(self.new_name), reason="一時VNの名前変更")
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] VC名の変更に失敗しました: {e}")
+            logger.error(f"VC名の変更に失敗しました: {e}")
             await interaction.followup.send("❌ 名前の変更に失敗しました。", ephemeral=True)
             return
         await interaction.followup.send(f"✅ VC名を「**{self.new_name}**」に変更しました。", ephemeral=True)
@@ -95,7 +99,7 @@ class TempVC(commands.Cog, DatabaseBase):
                     """)
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] temp_vcs テーブルの作成に失敗しました: {e}")
+            logger.error(f"temp_vcs テーブルの作成に失敗しました: {e}")
 
     def _register(self, channel_id: int, owner_id: int, guild_id: int):
         with self.get_db() as conn:
@@ -121,7 +125,7 @@ class TempVC(commands.Cog, DatabaseBase):
                     row = cur.fetchone()
                     return row[0] if row else None
         except Exception as e:
-            print(f"[ERROR] 一時VCの所有者取得に失敗しました: {e}")
+            logger.error(f"一時VCの所有者取得に失敗しました: {e}")
             return None
 
     def _all_temp_ids(self) -> list[int]:
@@ -131,7 +135,7 @@ class TempVC(commands.Cog, DatabaseBase):
                     cur.execute("SELECT channel_id FROM temp_vcs")
                     return [r[0] for r in cur.fetchall()]
         except Exception as e:
-            print(f"[ERROR] 一時VC一覧の取得に失敗しました: {e}")
+            logger.error(f"一時VC一覧の取得に失敗しました: {e}")
             return []
 
     # ------------------------------------------------------------------ #
@@ -170,7 +174,7 @@ class TempVC(commands.Cog, DatabaseBase):
             )
             await member.move_to(new_vc, reason="一時VCへ移動")
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 一時VCの作成/移動に失敗しました ({member.id}): {e}")
+            logger.error(f"一時VCの作成/移動に失敗しました ({member.id}): {e}")
             return
 
         self._register(new_vc.id, member.id, guild.id)
@@ -193,7 +197,7 @@ class TempVC(commands.Cog, DatabaseBase):
                 allowed_mentions=discord.AllowedMentions(users=[member]),
             )
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 一時VCへのパネル送信に失敗しました: {e}")
+            logger.error(f"一時VCへのパネル送信に失敗しました: {e}")
 
     async def _delete_if_empty(self, channel: discord.abc.GuildChannel):
         if not isinstance(channel, discord.VoiceChannel):

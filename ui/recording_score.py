@@ -1,4 +1,8 @@
+import logging
 import discord
+
+
+logger = logging.getLogger(__name__)
 
 # 転送対象とみなす音声ファイルの拡張子
 AUDIO_EXTENSIONS = (".mp3", ".ogg", ".wav", ".m4a", ".flac", ".webm", ".oga")
@@ -248,7 +252,7 @@ async def forward_recording(
     try:
         files = [await a.to_file() for a in attachments]
     except discord.HTTPException as e:
-        print(f"[ERROR] 録音ファイルの取得に失敗しました: {e}")
+        logger.error(f"録音ファイルの取得に失敗しました: {e}")
         files = []
 
     def add_audio_links():
@@ -276,14 +280,14 @@ async def forward_recording(
     except discord.HTTPException as e:
         # 413（容量超過）はファイルを外してリンク化して再送
         if e.status == 413:
-            print(f"[WARN] 音声が容量上限を超えたためリンクに切り替えます: {e}")
+            logger.warning(f"音声が容量上限を超えたためリンクに切り替えます: {e}")
             add_audio_links()
             try:
                 return await _post([])
             except (discord.Forbidden, discord.HTTPException) as e2:
-                print(f"[ERROR] 審査フォーラムへの投稿に失敗しました（リンク化後）: {e2}")
+                logger.error(f"審査フォーラムへの投稿に失敗しました（リンク化後）: {e2}")
         else:
-            print(f"[ERROR] 審査フォーラムへの投稿に失敗しました: {e}")
+            logger.error(f"審査フォーラムへの投稿に失敗しました: {e}")
     except discord.Forbidden as e:
-        print(f"[ERROR] 審査フォーラムへの投稿に失敗しました: {e}")
+        logger.error(f"審査フォーラムへの投稿に失敗しました: {e}")
     return None

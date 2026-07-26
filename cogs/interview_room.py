@@ -1,3 +1,4 @@
+import logging
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -6,6 +7,9 @@ import os
 from core.admin_base import AdminCogBase
 from ui.profile_wizard import ProfileStartView, RoomPanelView
 from ui.recording_score import is_audio
+
+
+logger = logging.getLogger(__name__)
 
 # 作成したチャンネルの topic に埋め込むプレフィックス（種別・所有者の識別用）
 INTERVIEW_TOPIC_PREFIX = "interview_room:"  # Aボタン：アピール録音用
@@ -145,7 +149,7 @@ class InterviewRoomCog(commands.Cog):
             try:
                 await user.add_roles(role, reason="面接・案内パネルのボタン押下によるロール付与")
             except discord.Forbidden:
-                print(f"[ERROR] ロール付与の権限がありません: {role.id} -> {user.id}")
+                logger.error(f"ロール付与の権限がありません: {role.id} -> {user.id}")
                 await interaction.followup.send(
                     "❌ ロールの付与に失敗しました。管理者にお問い合わせください。", ephemeral=True
                 )
@@ -197,7 +201,7 @@ class InterviewRoomCog(commands.Cog):
                 slowmode_delay=60,  # 1分に1通までのスローモード
             )
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 専用チャンネル作成に失敗しました ({user.id}): {e}")
+            logger.error(f"専用チャンネル作成に失敗しました ({user.id}): {e}")
             return None
 
     # ------------------------------------------------------------------ #

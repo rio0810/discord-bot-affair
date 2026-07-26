@@ -1,3 +1,4 @@
+import logging
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
@@ -6,6 +7,9 @@ import os
 
 from core.admin_base import AdminCogBase
 from core.db_base import DatabaseBase
+
+
+logger = logging.getLogger(__name__)
 
 # 通話部屋テキストchの topic に埋め込む識別子:
 #   通常     call_room:<recruiter_id>:<target_id>:<vc_id>
@@ -419,7 +423,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     """)
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] テーブルの作成に失敗しました: {e}")
+            logger.error(f"テーブルの作成に失敗しました: {e}")
 
     def get_trial_invited_ids(self, recruiter_id: int) -> set[int]:
         """recruiter が過去にお試し個通へ誘った相手の ID 一覧。"""
@@ -432,7 +436,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     return {row[0] for row in cur.fetchall()}
         except Exception as e:
-            print(f"[ERROR] お試し個通履歴の取得に失敗しました: {e}")
+            logger.error(f"お試し個通履歴の取得に失敗しました: {e}")
             return set()
 
     def record_trial_invite(self, recruiter_id: int, target_id: int):
@@ -446,7 +450,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] お試し個通履歴の記録に失敗しました: {e}")
+            logger.error(f"お試し個通履歴の記録に失敗しました: {e}")
 
     # ------------------------------------------------------------------ #
     # ブロック（お互いにお誘い相手一覧へ表示されなくなる）
@@ -461,7 +465,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     return {row[0] for row in cur.fetchall()}
         except Exception as e:
-            print(f"[ERROR] ブロック一覧の取得に失敗しました: {e}")
+            logger.error(f"ブロック一覧の取得に失敗しました: {e}")
             return set()
 
     def get_blockers_of(self, user_id: int) -> set[int]:
@@ -474,7 +478,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     return {row[0] for row in cur.fetchall()}
         except Exception as e:
-            print(f"[ERROR] 被ブロック一覧の取得に失敗しました: {e}")
+            logger.error(f"被ブロック一覧の取得に失敗しました: {e}")
             return set()
 
     def is_blocked_between(self, user_a: int, user_b: int) -> bool:
@@ -489,7 +493,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     return cur.fetchone() is not None
         except Exception as e:
-            print(f"[ERROR] ブロック状態の確認に失敗しました: {e}")
+            logger.error(f"ブロック状態の確認に失敗しました: {e}")
             return False
 
     def add_block(self, blocker_id: int, blocked_id: int):
@@ -503,7 +507,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] ブロックの追加に失敗しました: {e}")
+            logger.error(f"ブロックの追加に失敗しました: {e}")
 
     # ------------------------------------------------------------------ #
     # 個人ごとの部屋数上限（パネルのボタンで 1 件に制限 ⇔ 解除）
@@ -519,7 +523,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     row = cur.fetchone()
                     return row[0] if row else None
         except Exception as e:
-            print(f"[ERROR] 部屋数上限の取得に失敗しました: {e}")
+            logger.error(f"部屋数上限の取得に失敗しました: {e}")
             return None
 
     def get_all_room_limits(self) -> dict[int, int]:
@@ -530,7 +534,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     cur.execute("SELECT user_id, max_rooms FROM call_room_limits")
                     return {row[0]: row[1] for row in cur.fetchall()}
         except Exception as e:
-            print(f"[ERROR] 部屋数上限の一括取得に失敗しました: {e}")
+            logger.error(f"部屋数上限の一括取得に失敗しました: {e}")
             return {}
 
     def set_room_limit(self, user_id: int, max_rooms: int):
@@ -544,7 +548,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 部屋数上限の設定に失敗しました: {e}")
+            logger.error(f"部屋数上限の設定に失敗しました: {e}")
 
     def clear_room_limit(self, user_id: int):
         try:
@@ -553,7 +557,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     cur.execute("DELETE FROM call_room_limits WHERE user_id = %s", (user_id,))
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 部屋数上限の解除に失敗しました: {e}")
+            logger.error(f"部屋数上限の解除に失敗しました: {e}")
 
     def get_all_blocks(self) -> list[tuple[int, int]]:
         """全ブロック関係 (blocker_id, blocked_id) の一覧（登録順）。"""
@@ -565,7 +569,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     return [(row[0], row[1]) for row in cur.fetchall()]
         except Exception as e:
-            print(f"[ERROR] ブロック全件の取得に失敗しました: {e}")
+            logger.error(f"ブロック全件の取得に失敗しました: {e}")
             return []
 
     def remove_block(self, blocker_id: int, blocked_id: int):
@@ -578,7 +582,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] ブロックの解除に失敗しました: {e}")
+            logger.error(f"ブロックの解除に失敗しました: {e}")
 
     # ------------------------------------------------------------------ #
     # パネル設置コマンド
@@ -1092,7 +1096,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
                 topic=f"{topic}:{voice_channel.id}" + (":trial" if trial else ""),
             )
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 通話部屋の作成に失敗しました ({recruiter.id} × {target.id}): {e}")
+            logger.error(f"通話部屋の作成に失敗しました ({recruiter.id} × {target.id}): {e}")
             return None
 
         description = (
@@ -1140,7 +1144,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
     ):
         channel = self.bot.get_channel(self.log_channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
-            print(f"⚠️ [CallMatching] ログチャンネル {self.log_channel_id} が見つかりません。")
+            logger.warning(f"⚠️ [CallMatching] ログチャンネル {self.log_channel_id} が見つかりません。")
             return
 
         embed = discord.Embed(title=f"📜 通話マッチング: {title}", color=color, timestamp=discord.utils.utcnow())
@@ -1212,7 +1216,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
         try:
             sounds = await guild.fetch_soundboard_sounds()
         except discord.HTTPException as e:
-            print(f"⚠️ [CallMatching] サウンドボード一覧の取得に失敗: {e}")
+            logger.warning(f"⚠️ [CallMatching] サウンドボード一覧の取得に失敗: {e}")
             return None
         if self.trial_warning_sound.isdigit():
             return discord.utils.get(sounds, id=int(self.trial_warning_sound))
@@ -1232,7 +1236,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
 
         sound = await self._resolve_warning_sound(guild)
         if sound is None:
-            print(f"⚠️ [CallMatching] サウンド '{self.trial_warning_sound}' が見つかりません。")
+            logger.warning(f"⚠️ [CallMatching] サウンド '{self.trial_warning_sound}' が見つかりません。")
             return
 
         voice_client = None
@@ -1242,7 +1246,7 @@ class CallMatchingCog(commands.Cog, DatabaseBase):
             await channel.send_sound(sound)
             await asyncio.sleep(5)  # 再生が終わる前に切断しないよう少し待つ
         except (discord.ClientException, discord.HTTPException, asyncio.TimeoutError) as e:
-            print(f"⚠️ [CallMatching] サウンド再生に失敗: {e}")
+            logger.warning(f"⚠️ [CallMatching] サウンド再生に失敗: {e}")
         finally:
             if voice_client is not None:
                 try:

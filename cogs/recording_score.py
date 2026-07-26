@@ -1,3 +1,4 @@
+import logging
 import discord
 from discord.ext import commands, tasks
 import os
@@ -6,16 +7,26 @@ from datetime import datetime, timedelta, timezone
 
 from core.db_base import DatabaseBase
 
+
+logger = logging.getLogger(__name__)
+
 # 提出から未採点者へメンションするまでの経過時間
 REMIND_AFTER = timedelta(hours=12)
 # 提出から強制的に結果を出すまでの経過時間（案内する24時間期限の3時間前）
 FORCE_AFTER = timedelta(hours=21)
 
-# 提出が揃って審査に回ったときの案内文（男女共通）
-SUBMITTED_MSG = (
-    "✅ 提出を受け付けました！運営の審査に回ります。\n"
-    "📩 結果は **24時間以内** にお知らせしますので、少々お待ちください🙏"
-)
+# 提出が揃って審査に回ったときの案内（男女共通）
+
+
+def submitted_embed() -> discord.Embed:
+    return discord.Embed(
+        title="✅ 提出を受け付けました",
+        description=(
+            "運営の審査に回ります。\n"
+            "📩 結果は **24時間以内** にお知らせしますので、少々お待ちください🙏"
+        ),
+        color=discord.Color.green(),
+    )
 from ui.recording_score import (
     ScoreButton,
     ScoreStatusButton,
@@ -83,7 +94,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     cur.execute("SELECT 1 FROM interview_reviewers WHERE user_id = %s", (user_id,))
                     return cur.fetchone() is not None
         except Exception as e:
-            print(f"[ERROR] 審査メンバーの照会に失敗しました: {e}")
+            logger.error(f"審査メンバーの照会に失敗しました: {e}")
             return False
 
     def _reviewer_count(self) -> int:
@@ -93,7 +104,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     cur.execute("SELECT COUNT(*) FROM interview_reviewers")
                     return cur.fetchone()[0]
         except Exception as e:
-            print(f"[ERROR] 審査メンバー数の取得に失敗しました: {e}")
+            logger.error(f"審査メンバー数の取得に失敗しました: {e}")
             return 0
 
     def _add_reviewer(self, user_id: int) -> bool:
@@ -110,7 +121,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     conn.commit()
                     return added
         except Exception as e:
-            print(f"[ERROR] 審査メンバーの登録に失敗しました: {e}")
+            logger.error(f"審査メンバーの登録に失敗しました: {e}")
             return False
 
     def _remove_reviewer(self, user_id: int) -> bool:
@@ -126,7 +137,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     conn.commit()
                     return removed
         except Exception as e:
-            print(f"[ERROR] 審査メンバーの削除に失敗しました: {e}")
+            logger.error(f"審査メンバーの削除に失敗しました: {e}")
             return False
 
     def scored_reviewer_ids(self, message_id: int) -> set[int]:
@@ -140,7 +151,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     )
                     return {r[0] for r in cur.fetchall()}
         except Exception as e:
-            print(f"[ERROR] 採点状況の取得に失敗しました: {e}")
+            logger.error(f"採点状況の取得に失敗しました: {e}")
             return set()
 
     def _list_reviewers(self) -> list[int]:
@@ -150,7 +161,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     cur.execute("SELECT user_id FROM interview_reviewers")
                     return [r[0] for r in cur.fetchall()]
         except Exception as e:
-            print(f"[ERROR] 審査メンバー一覧の取得に失敗しました: {e}")
+            logger.error(f"審査メンバー一覧の取得に失敗しました: {e}")
             return []
 
     @discord.app_commands.command(
@@ -299,16 +310,15 @@ class RecordingScore(commands.Cog, DatabaseBase):
         view.add_item(container)
 
         allowed = discord.AllowedMentions(users=[member])
-        # 送信先：本人の面接・プロフ用チャンネル（topic で判定）
+        # 送信先：本人の面接・プロフ用チャンネル（topic で判定）。DMには送らない
         targets = {f"interview_room:{member.id}", f"profile_room:{member.id}"}
         personal = discord.utils.find(lambda c: c.topic in targets, guild.text_channels)
+        if personal is None:
+            return
         try:
-            if personal is not None:
-                await personal.send(view=view, allowed_mentions=allowed)
-            else:
-                await member.send(view=view)
+            await personal.send(view=view, allowed_mentions=allowed)
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 合格案内の送信に失敗しました ({member.id}): {e}")
+            logger.error(f"合格案内の送信に失敗しました ({member.id}): {e}")
 
     def _forward_channel(self, kind: str = "m"):
         # 種別に応じた男女別フォーラムを優先。無ければテキストチャンネル。
@@ -337,7 +347,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
             self._register_review(result, interaction.user.id, "m")
             self._mark_done(interaction.user.id)
             try:
-                await interaction.channel.send(SUBMITTED_MSG)
+                await interaction.channel.send(embed=submitted_embed())
             except (discord.Forbidden, discord.HTTPException):
                 pass
         else:
@@ -391,7 +401,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         self._register_review(result, message.author.id, "m")
         self._mark_done(message.author.id)
         try:
-            await message.channel.send(SUBMITTED_MSG)
+            await message.channel.send(embed=submitted_embed())
         except (discord.Forbidden, discord.HTTPException):
             pass
 
@@ -417,7 +427,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 待機プロフィールの保存に失敗しました: {e}")
+            logger.error(f"待機プロフィールの保存に失敗しました: {e}")
 
     def _mark_done(self, user_id: int):
         try:
@@ -429,7 +439,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 審査済みフラグの記録に失敗しました: {e}")
+            logger.error(f"審査済みフラグの記録に失敗しました: {e}")
 
     def _is_done(self, user_id: int) -> bool:
         try:
@@ -438,7 +448,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     cur.execute("SELECT 1 FROM interview_done WHERE user_id = %s", (user_id,))
                     return cur.fetchone() is not None
         except Exception as e:
-            print(f"[ERROR] 審査済みフラグの取得に失敗しました: {e}")
+            logger.error(f"審査済みフラグの取得に失敗しました: {e}")
             return False
 
     def mark_profile_created(self, user_id: int):
@@ -452,7 +462,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] プロフィール作成フラグの記録に失敗しました: {e}")
+            logger.error(f"プロフィール作成フラグの記録に失敗しました: {e}")
 
     def has_profile(self, user_id: int) -> bool:
         """プロフィールを作成済みか。DB失敗時は False（作成を許可＝フェイルオープン）。"""
@@ -462,7 +472,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     cur.execute("SELECT 1 FROM profile_created WHERE user_id = %s", (user_id,))
                     return cur.fetchone() is not None
         except Exception as e:
-            print(f"[ERROR] プロフィール作成フラグの取得に失敗しました: {e}")
+            logger.error(f"プロフィール作成フラグの取得に失敗しました: {e}")
             return False
 
     def _pop_pending(self, user_id: int):
@@ -477,7 +487,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     conn.commit()
                     return json.loads(row[0])
         except Exception as e:
-            print(f"[ERROR] 待機プロフィールの取得に失敗しました: {e}")
+            logger.error(f"待機プロフィールの取得に失敗しました: {e}")
             return None
 
     def _ensure_tables(self):
@@ -546,7 +556,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     """)
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] recording_scores テーブルの作成に失敗しました: {e}")
+            logger.error(f"recording_scores テーブルの作成に失敗しました: {e}")
 
     # ------------------------------------------------------------------ #
     # 採点の記録と集計
@@ -576,7 +586,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     count = cur.fetchone()[0]
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 採点の記録に失敗しました: {e}")
+            logger.error(f"採点の記録に失敗しました: {e}")
             await interaction.response.send_message("❌ 採点の記録に失敗しました。", ephemeral=True)
             return
 
@@ -604,7 +614,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     conn.commit()
                     return claimed
         except Exception as e:
-            print(f"[ERROR] 合否判定フラグの取得に失敗しました: {e}")
+            logger.error(f"合否判定フラグの取得に失敗しました: {e}")
             return False
 
     def _unclaim_verdict(self, submitter_id: int):
@@ -618,7 +628,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 合否判定フラグの解除に失敗しました: {e}")
+            logger.error(f"合否判定フラグの解除に失敗しました: {e}")
 
     def _claim_result(self, message_id: int) -> bool:
         """結果出力の権利を取る（複数回出力しないよう最初の1回だけ True）。"""
@@ -634,7 +644,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     conn.commit()
                     return claimed
         except Exception as e:
-            print(f"[ERROR] 結果権利の取得に失敗しました: {e}")
+            logger.error(f"結果権利の取得に失敗しました: {e}")
             return False
 
     # ------------------------------------------------------------------ #
@@ -655,7 +665,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 審査の期限登録に失敗しました: {e}")
+            logger.error(f"審査の期限登録に失敗しました: {e}")
 
     def _delete_review(self, message_id: int):
         try:
@@ -664,7 +674,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     cur.execute("DELETE FROM interview_reviews WHERE message_id = %s", (message_id,))
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 審査の期限削除に失敗しました: {e}")
+            logger.error(f"審査の期限削除に失敗しました: {e}")
 
     def _list_pending_reviews(self):
         try:
@@ -676,7 +686,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     )
                     return cur.fetchall()
         except Exception as e:
-            print(f"[ERROR] 未処理審査の取得に失敗しました: {e}")
+            logger.error(f"未処理審査の取得に失敗しました: {e}")
             return []
 
     def _mark_reminded(self, message_id: int):
@@ -689,7 +699,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     )
                     conn.commit()
         except Exception as e:
-            print(f"[ERROR] 未採点メンション済みフラグの記録に失敗しました: {e}")
+            logger.error(f"未採点メンション済みフラグの記録に失敗しました: {e}")
 
     async def _resolve_channel(self, channel_id: int):
         ch = self.bot.get_channel(channel_id)
@@ -738,7 +748,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                 allowed_mentions=discord.AllowedMentions(users=True),
             )
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 未採点メンションの送信に失敗しました: {e}")
+            logger.error(f"未採点メンションの送信に失敗しました: {e}")
         self._mark_reminded(message_id)
 
     async def _force_result(self, message_id: int, channel_id: int, submitter_id: int):
@@ -765,7 +775,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                         allowed_mentions=allowed,
                     )
                 except (discord.Forbidden, discord.HTTPException) as e:
-                    print(f"[ERROR] 強制結果（採点なし）の送信に失敗しました: {e}")
+                    logger.error(f"強制結果（採点なし）の送信に失敗しました: {e}")
         self._delete_review(message_id)
 
     async def _post_result(self, channel, message_id: int, submitter_id: int, forced: bool = False):
@@ -781,7 +791,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
                     )
                     rows = cur.fetchall()
         except Exception as e:
-            print(f"[ERROR] 採点集計の取得に失敗しました: {e}")
+            logger.error(f"採点集計の取得に失敗しました: {e}")
             return
         if not rows:
             return
@@ -860,7 +870,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         try:
             await channel.send(view=view, allowed_mentions=allowed)
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] 採点結果の送信に失敗しました: {e}")
+            logger.error(f"採点結果の送信に失敗しました: {e}")
 
 
 async def setup(bot: commands.Bot):

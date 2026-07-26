@@ -1,8 +1,12 @@
+import logging
 import asyncio
 import math
 import os
 
 import discord
+
+
+logger = logging.getLogger(__name__)
 
 # 男性の面接チャンネルの topic プレフィックス（interview_room.py と揃える）
 INTERVIEW_TOPIC_PREFIX = "interview_room:"
@@ -170,7 +174,7 @@ async def _hide_category_from_role(guild: discord.Guild, role: discord.Role):
             role, view_channel=False, reason="恋愛の割合0割ロールからカテゴリを非表示"
         )
     except (discord.Forbidden, discord.HTTPException):
-        print(f"[ERROR] カテゴリ非表示の設定に失敗しました: category={ZERO_ROMANCE_HIDDEN_CATEGORY_ID}")
+        logger.error(f"カテゴリ非表示の設定に失敗しました: category={ZERO_ROMANCE_HIDDEN_CATEGORY_ID}")
 
 
 async def _apply_choice_role(guild: discord.Guild, member: discord.Member, casual: bool):
@@ -187,7 +191,7 @@ async def _apply_choice_role(guild: discord.Guild, member: discord.Member, casua
         if grant is not None and grant not in member.roles:
             await member.add_roles(grant, reason="プロフィール種別（雑談/恋愛）の選択")
     except (discord.Forbidden, discord.HTTPException):
-        print(f"[ERROR] 種別ロールの付与に失敗しました: {member.id}")
+        logger.error(f"種別ロールの付与に失敗しました: {member.id}")
     if casual and zero_role is not None:
         await _hide_category_from_role(guild, zero_role)
 
@@ -211,7 +215,7 @@ async def _apply_dm_criteria_role(guild: discord.Guild, member: discord.Member, 
         if grant is not None and grant not in member.roles:
             await member.add_roles(grant, reason="DM・フレンド申請の基準の選択")
     except (discord.Forbidden, discord.HTTPException):
-        print(f"[ERROR] DM基準ロールの付与に失敗しました: {member.id}")
+        logger.error(f"DM基準ロールの付与に失敗しました: {member.id}")
 
 
 def build_profile_text(
@@ -494,7 +498,7 @@ class ProfileWizardView(discord.ui.View):
                 content=profile_text, allowed_mentions=discord.AllowedMentions.none()
             )
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[ERROR] プロフィールの投稿に失敗しました: {e}")
+            logger.error(f"プロフィールの投稿に失敗しました: {e}")
 
         # 審査への送信
         cog = interaction.client.get_cog("RecordingScore")
@@ -568,7 +572,7 @@ async def _send_staff_private_note(interaction: discord.Interaction, disability:
         return
     channel = interaction.client.get_channel(RECORDING_FORWARD_CHANNEL_ID)
     if not isinstance(channel, (discord.TextChannel, discord.Thread)):
-        print(f"⚠️ [ProfileWizard] 運営共有先 {RECORDING_FORWARD_CHANNEL_ID} が見つかりません。")
+        logger.warning(f"⚠️ [ProfileWizard] 運営共有先 {RECORDING_FORWARD_CHANNEL_ID} が見つかりません。")
         return
     embed = discord.Embed(
         title="🔒 【運営共有】障害・ハンデの申告",
@@ -581,7 +585,7 @@ async def _send_staff_private_note(interaction: discord.Interaction, disability:
     try:
         await channel.send(embed=embed)
     except (discord.Forbidden, discord.HTTPException) as e:
-        print(f"[ERROR] 障害申告の運営共有に失敗しました: {e}")
+        logger.error(f"障害申告の運営共有に失敗しました: {e}")
 
 
 # ---------------------------------------------------------------------- #

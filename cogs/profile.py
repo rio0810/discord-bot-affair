@@ -1,6 +1,10 @@
 import discord
 from discord.ext import commands
+import logging
 import os
+
+logger = logging.getLogger(__name__)
+
 
 class VoiceProfile(commands.Cog):
     def __init__(self, bot):
@@ -107,7 +111,7 @@ class VoiceProfile(commands.Cog):
             sent = await after.channel.send(view=view, embed=embed)
             self.sent_messages[member.id] = sent
         except discord.Forbidden:
-            print(f"チャンネル {after.channel.name} でメッセージ送信権限がありません。")
+            logger.warning(f"チャンネル {after.channel.name} でメッセージ送信権限がありません。")
 
 async def setup(bot):
     await bot.add_cog(VoiceProfile(bot))
