@@ -44,6 +44,9 @@ class RecordingScore(commands.Cog, DatabaseBase):
         # 合格後にプロフィールを書いてもらう性別別チャンネル
         self.male_profile_channel_id = int(os.getenv("MALE_PROFILE_CHANNEL_ID") or "0")
         self.female_profile_channel_id = int(os.getenv("FEMALE_PROFILE_CHANNEL_ID") or "0")
+        # 雑談ロール保持者は性別別ではなく雑談ユーザー専用チャンネルへ案内する
+        self.zero_romance_role_id = int(os.getenv("ZERO_ROMANCE_ROLE_ID") or "0")
+        self.zero_romance_profile_channel_id = int(os.getenv("ZERO_ROMANCE_PROFILE_CHANNEL_ID") or "0")
         # 合格案内で確認してもらうガイドラインチャンネル
         self.guideline_channel_id = int(os.getenv("GUIDELINE_CHANNEL_ID") or "0")
 
@@ -238,8 +241,11 @@ class RecordingScore(commands.Cog, DatabaseBase):
     async def _notify_profile_channel(self, guild: discord.Guild, member: discord.Member):
         """合格者に、性別ごとのプロフィールチャンネルへの記入を案内する。
         本人の面接・プロフ用チャンネルへ送り、無ければDMにフォールバックする。"""
+        # 雑談ロール保持者は性別を問わず雑談ユーザー専用チャンネルへ案内
+        if self.zero_romance_role_id and guild.get_role(self.zero_romance_role_id) in member.roles:
+            channel_id = self.zero_romance_profile_channel_id
         # 性別に応じた投稿先プロフィールチャンネルを決定
-        if self.female_role_id and guild.get_role(self.female_role_id) in member.roles:
+        elif self.female_role_id and guild.get_role(self.female_role_id) in member.roles:
             channel_id = self.female_profile_channel_id
         elif self.male_role_id and guild.get_role(self.male_role_id) in member.roles:
             channel_id = self.male_profile_channel_id
