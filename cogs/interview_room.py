@@ -6,7 +6,7 @@ import os
 
 from core.admin_base import AdminCogBase
 from ui.profile_wizard import ProfileStartView, RoomPanelView
-from ui.recording_score import is_audio
+from cogs.recording_score.ui import is_audio
 
 
 logger = logging.getLogger(__name__)

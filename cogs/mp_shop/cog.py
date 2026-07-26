@@ -1,143 +1,31 @@
 import logging
-import discord
-from discord.ext import commands, tasks
-from discord import app_commands
 import os
 import re
 from datetime import datetime, timedelta
 
-from core.admin_base import AdminCogBase
-from core.db_base import DatabaseBase
+import discord
+from discord import app_commands
+from discord.ext import commands, tasks
 
+from core.admin_base import AdminCogBase
+
+from .constants import (
+    EMOJI_COST,
+    EMOJI_MAX_BYTES,
+    IMAGE_EXTENSIONS,
+    MOOD_PHOTO_COST,
+    MOOD_PHOTO_HOURS,
+    ROLE_CREATE_COST,
+    TEXT_CHANNEL_COST,
+    TRIAL_RESET_COST,
+)
+from .db import MPShopDBMixin
+from .ui import EmojiModal, MPShopView, RoleCreateModal, TextChannelModal
 
 logger = logging.getLogger(__name__)
 
-# 交換に必要なチケット枚数
-TRIAL_RESET_COST = 20
-TEXT_CHANNEL_COST = 10
-ROLE_CREATE_COST = 5
-EMOJI_COST = 5
-# 絵文字画像の上限（Discord仕様：256KB）
-EMOJI_MAX_BYTES = 256 * 1024
-MOOD_PHOTO_COST = int(os.getenv("MOOD_PHOTO_COST") or "3")
-# 雰囲気写真の閲覧権を得てから画像投稿までの猶予（時間）
-MOOD_PHOTO_HOURS = 24
-# 画像とみなす拡張子
-IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".heic")
 
-
-class TextChannelModal(discord.ui.Modal, title="個人専用テキストチャット作成"):
-    ch_name = discord.ui.TextInput(
-        label="チャンネル名", max_length=100, placeholder="例：〇〇専用部屋"
-    )
-
-    def __init__(self, cog: "MPShop", role_options: list[tuple[int, str]]):
-        super().__init__()
-        self.cog = cog
-        # 閲覧ロールは男性・女性ロールのみから選択（設定が無ければ選択欄は出さない）
-        self.roles = None
-        if role_options:
-            self.roles = discord.ui.CheckboxGroup(
-                options=[discord.CheckboxGroupOption(label=name, value=str(rid)) for rid, name in role_options],
-                min_values=1,
-                max_values=len(role_options),
-                required=True,
-            )
-            self.add_item(discord.ui.Label(text="閲覧できるロール（男性・女性から1つ以上必須）", component=self.roles))
-
-    async def on_submit(self, interaction: discord.Interaction):
-        role_ids = [int(v) for v in (self.roles.values or [])] if self.roles is not None else []
-        roles = [r for r in (interaction.guild.get_role(rid) for rid in role_ids) if r is not None]
-        await self.cog.redeem_text_channel(interaction, str(self.ch_name), roles)
-
-
-class RoleCreateModal(discord.ui.Modal, title="ロール作成"):
-    role_name = discord.ui.TextInput(label="ロール名", max_length=100, placeholder="例：〇〇ファン")
-    color = discord.ui.TextInput(
-        label="色（#RRGGBB・任意）", max_length=7, required=False, placeholder="#FF0000",
-    )
-
-    def __init__(self, cog: "MPShop"):
-        super().__init__()
-        self.cog = cog
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await self.cog.redeem_role_create(interaction, str(self.role_name), str(self.color))
-
-
-class EmojiModal(discord.ui.Modal, title="サーバー絵文字を追加"):
-    emoji_name = discord.ui.TextInput(
-        label="絵文字の名前（英数字と_）", max_length=32, placeholder="例：my_emoji",
-    )
-
-    def __init__(self, cog: "MPShop"):
-        super().__init__()
-        self.cog = cog
-        self.image = discord.ui.FileUpload(required=True, min_values=1, max_values=1)
-        self.add_item(discord.ui.Label(text="絵文字にする画像（256KB以下・png/jpg/gif）", component=self.image))
-
-    async def on_submit(self, interaction: discord.Interaction):
-        attachment = self.image.values[0] if self.image.values else None
-        await self.cog.redeem_emoji(interaction, str(self.emoji_name), attachment)
-
-
-class MPShopView(discord.ui.View):
-    """MPチケットの確認・交換パネル（永続ビュー）。"""
-
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="チケットを確認", emoji="🎫", style=discord.ButtonStyle.gray, custom_id="persistent:mp_check", row=0)
-    async def check(self, interaction: discord.Interaction, button: discord.ui.Button):
-        cog: "MPShop" = interaction.client.get_cog("MPShop")
-        if cog is None:
-            await interaction.response.send_message("❌ 現在この機能は利用できません。", ephemeral=True)
-            return
-        n = cog.get_tickets(interaction.user.id)
-        await interaction.response.send_message(f"🎫 あなたのMPチケット：**{n}枚**", ephemeral=True)
-
-    @discord.ui.select(
-        placeholder="🎁 引き換える商品を選ぶ...",
-        custom_id="persistent:mp_shop",
-        row=1,
-        options=[
-            discord.SelectOption(
-                label="お試し個通のリセット", value="trial_reset",
-                description=f"お試し個通の誘い履歴をリセット（{TRIAL_RESET_COST}枚）", emoji="🔄",
-            ),
-            discord.SelectOption(
-                label="個人専用テキストチャット作成", value="text_channel",
-                description=f"閲覧ロールを指定して作成（{TEXT_CHANNEL_COST}枚）", emoji="📝",
-            ),
-            discord.SelectOption(
-                label="ロール作成", value="create_role",
-                description=f"名前と色を指定してロールを作成・付与（{ROLE_CREATE_COST}枚）", emoji="🎨",
-            ),
-            discord.SelectOption(
-                label="雰囲気写真の閲覧権", value="mood_photo",
-                description=f"24h以内に画像投稿しないと没収（{MOOD_PHOTO_COST}枚）", emoji="📷",
-            ),
-            discord.SelectOption(
-                label="サーバー絵文字を追加", value="add_emoji",
-                description=f"画像をアップロードして絵文字を追加（{EMOJI_COST}枚）", emoji="😀",
-            ),
-        ],
-    )
-    async def shop(self, interaction: discord.Interaction, select: discord.ui.Select):
-        cog: "MPShop" = interaction.client.get_cog("MPShop")
-        if cog is None:
-            await interaction.response.send_message("❌ 現在この機能は利用できません。", ephemeral=True)
-            return
-        choice = select.values[0]
-        # 同じ商品を連続で選べるよう、パネルのセレクトの選択状態をリセットする
-        try:
-            await interaction.message.edit(view=MPShopView())
-        except (discord.NotFound, discord.HTTPException):
-            pass
-        await cog.handle_redeem(interaction, choice)
-
-
-class MPShop(commands.Cog, DatabaseBase):
+class MPShop(commands.Cog, MPShopDBMixin):
     """MPチケットの確認と、商品との交換パネル。"""
 
     def __init__(self, bot: commands.Bot):
@@ -156,24 +44,7 @@ class MPShop(commands.Cog, DatabaseBase):
 
     async def cog_load(self):
         self.bot.add_view(MPShopView())
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS mp_text_channels (
-                            user_id BIGINT PRIMARY KEY,
-                            channel_id BIGINT NOT NULL
-                        )
-                    """)
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS mood_photo_deadlines (
-                            user_id BIGINT PRIMARY KEY,
-                            deadline TIMESTAMP NOT NULL
-                        )
-                    """)
-                    conn.commit()
-        except Exception as e:
-            logger.error(f"mp_shop テーブルの作成に失敗しました: {e}")
+        self._ensure_tables()
         self.mood_photo_checker.start()
 
     def cog_unload(self):
@@ -199,13 +70,7 @@ class MPShop(commands.Cog, DatabaseBase):
             return
         if not any(self._is_image(a) for a in message.attachments):
             return
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("DELETE FROM mood_photo_deadlines WHERE user_id = %s", (message.author.id,))
-                    conn.commit()
-        except Exception as e:
-            logger.error(f"雰囲気写真ノルマのクリアに失敗しました: {e}")
+        self._clear_mood_deadline(message.author.id)
 
     @staticmethod
     def _is_image(attachment: discord.Attachment) -> bool:
@@ -217,18 +82,7 @@ class MPShop(commands.Cog, DatabaseBase):
     async def mood_photo_checker(self):
         if not self.mood_role_id:
             return
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT user_id FROM mood_photo_deadlines WHERE deadline <= %s", (datetime.now(),)
-                    )
-                    expired = [r[0] for r in cur.fetchall()]
-        except Exception as e:
-            logger.error(f"雰囲気写真の期限チェックに失敗しました: {e}")
-            return
-
-        for user_id in expired:
+        for user_id in self._expired_mood_user_ids():
             for guild in self.bot.guilds:
                 role = guild.get_role(self.mood_role_id)
                 member = guild.get_member(user_id)
@@ -237,44 +91,11 @@ class MPShop(commands.Cog, DatabaseBase):
                         await member.remove_roles(role, reason="雰囲気写真：24時間以内に画像投稿がなかったため没収")
                     except (discord.Forbidden, discord.HTTPException):
                         pass
-            try:
-                with self.get_db() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("DELETE FROM mood_photo_deadlines WHERE user_id = %s", (user_id,))
-                        conn.commit()
-            except Exception as e:
-                logger.error(f"期限レコードの削除に失敗しました: {e}")
+            self._clear_mood_deadline(user_id)
 
     @mood_photo_checker.before_loop
     async def before_mood_photo_checker(self):
         await self.bot.wait_until_ready()
-
-    def _existing_text_channel(self, guild: discord.Guild, user_id: int):
-        """そのユーザーが作成済みで、今も存在する個人テキストチャットを返す（無ければNone）。"""
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT channel_id FROM mp_text_channels WHERE user_id = %s", (user_id,))
-                    row = cur.fetchone()
-        except Exception as e:
-            logger.error(f"個人テキストチャットの確認に失敗しました: {e}")
-            return None
-        if not row:
-            return None
-        return guild.get_channel(row[0])  # 削除済みなら None
-
-    def _save_text_channel(self, user_id: int, channel_id: int):
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "INSERT INTO mp_text_channels (user_id, channel_id) VALUES (%s, %s) "
-                        "ON CONFLICT (user_id) DO UPDATE SET channel_id = EXCLUDED.channel_id",
-                        (user_id, channel_id),
-                    )
-                    conn.commit()
-        except Exception as e:
-            logger.error(f"個人テキストチャットの記録に失敗しました: {e}")
 
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
@@ -354,18 +175,10 @@ class MPShop(commands.Cog, DatabaseBase):
     @app_commands.command(name="mp_list", description="【管理者専用】メンバーのMPチケット所持数を表示します")
     async def mp_list(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT user_id, mp_tickets FROM users WHERE mp_tickets > 0 ORDER BY mp_tickets DESC"
-                    )
-                    rows = cur.fetchall()
-        except Exception as e:
-            logger.error(f"チケット一覧の取得に失敗しました: {e}")
+        rows = self._list_ticket_holders()
+        if rows is None:
             await interaction.followup.send("❌ 取得に失敗しました。")
             return
-
         if not rows:
             await interaction.followup.send("MPチケットを持っているメンバーはいません。")
             return
@@ -395,69 +208,6 @@ class MPShop(commands.Cog, DatabaseBase):
         )
         embed.set_footer(text=f"所持者 {len(rows)}名 / 合計 {total}枚")
         await interaction.followup.send(embed=embed)
-
-    def _grant(self, user_id: int, amount: int, user_name: str | None = None) -> int:
-        """チケットを amount 枚増減し（負なら減少）、変更後の残高を返す。user_name があれば記録。"""
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "INSERT INTO users (user_id, mp_tickets, user_name) VALUES (%s, %s, %s) "
-                        "ON CONFLICT (user_id) DO UPDATE SET "
-                        "mp_tickets = GREATEST(0, users.mp_tickets + EXCLUDED.mp_tickets), "
-                        "user_name = COALESCE(EXCLUDED.user_name, users.user_name) "
-                        "RETURNING mp_tickets",
-                        (user_id, amount, user_name),
-                    )
-                    new_balance = cur.fetchone()[0]
-                    conn.commit()
-                    return new_balance
-        except Exception as e:
-            logger.error(f"チケットの増減に失敗しました: {e}")
-            return self.get_tickets(user_id)
-
-    # ------------------------------------------------------------------ #
-    # チケットのDB操作
-    # ------------------------------------------------------------------ #
-    def get_tickets(self, user_id: int) -> int:
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT mp_tickets FROM users WHERE user_id = %s", (user_id,))
-                    row = cur.fetchone()
-                    return row[0] if row else 0
-        except Exception as e:
-            logger.error(f"チケット残高の取得に失敗しました: {e}")
-            return 0
-
-    def _spend(self, user_id: int, cost: int) -> bool:
-        """残高が足りれば cost 枚を消費して True。足りなければ False（原子的）。"""
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE users SET mp_tickets = mp_tickets - %s "
-                        "WHERE user_id = %s AND mp_tickets >= %s RETURNING mp_tickets",
-                        (cost, user_id, cost),
-                    )
-                    ok = cur.fetchone() is not None
-                    conn.commit()
-                    return ok
-        except Exception as e:
-            logger.error(f"チケットの消費に失敗しました: {e}")
-            return False
-
-    def _refund(self, user_id: int, cost: int):
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE users SET mp_tickets = mp_tickets + %s WHERE user_id = %s",
-                        (cost, user_id),
-                    )
-                    conn.commit()
-        except Exception as e:
-            logger.error(f"チケットの返還に失敗しました: {e}")
 
     # ------------------------------------------------------------------ #
     # 交換処理
@@ -579,17 +329,7 @@ class MPShop(commands.Cog, DatabaseBase):
 
         # 24時間以内の画像投稿ノルマを登録
         deadline = datetime.now() + timedelta(hours=MOOD_PHOTO_HOURS)
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "INSERT INTO mood_photo_deadlines (user_id, deadline) VALUES (%s, %s) "
-                        "ON CONFLICT (user_id) DO UPDATE SET deadline = EXCLUDED.deadline",
-                        (member.id, deadline),
-                    )
-                    conn.commit()
-        except Exception as e:
-            logger.error(f"雰囲気写真ノルマの登録に失敗しました: {e}")
+        self._set_mood_deadline(member.id, deadline)
 
         mood_ch = self._mood_channel(guild)
         where = mood_ch.mention if mood_ch else "「雰囲気写真」チャンネル"
@@ -607,13 +347,7 @@ class MPShop(commands.Cog, DatabaseBase):
             )
             return
         # お試し個通の誘い履歴を削除（call_matching の trial_invites テーブル）
-        try:
-            with self.get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("DELETE FROM trial_invites WHERE recruiter_id = %s", (interaction.user.id,))
-                    conn.commit()
-        except Exception as e:
-            logger.error(f"お試し個通のリセットに失敗しました: {e}")
+        if not self._reset_trial_invites(interaction.user.id):
             self._refund(interaction.user.id, TRIAL_RESET_COST)
             await interaction.response.send_message(
                 "❌ リセットに失敗しました。チケットは消費されていません。", ephemeral=True

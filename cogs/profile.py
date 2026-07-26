@@ -2,8 +2,14 @@ import discord
 from discord.ext import commands
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
+
+# VC に貼るプロフィール表示 embed のタイトル末尾（掃除時の判定用）
+_PROFILE_TITLE_SUFFIX = "さんのプロフィール"
+# embed author 名の末尾 "(@username)" からユーザー名を取り出す
+_AUTHOR_USERNAME_RE = re.compile(r"\(@([^)]+)\)\s*$")
 
 
 class VoiceProfile(commands.Cog):
@@ -17,6 +23,8 @@ class VoiceProfile(commands.Cog):
         self.sent_messages: dict[int, discord.Message] = {}
         # member_id -> 最新プロフィールメッセージ のキャッシュ
         self._profile_cache: dict[int, discord.Message] = {}
+        # VC の置き去りプロフィール掃除を1プロセス1回だけ実行するためのフラグ
+        self._swept_voice = False
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -31,6 +39,64 @@ class VoiceProfile(commands.Cog):
                 cached = self._profile_cache.get(uid)
                 if cached is None or msg.created_at > cached.created_at:
                     self._profile_cache[uid] = msg
+
+        # 再起動でメモリ上の記録が消えたことによる置き去りプロフィールを掃除し、
+        # 現在VCにいる人の分は再追跡する（1プロセス1回だけ）
+        if not self._swept_voice:
+            self._swept_voice = True
+            await self._sweep_voice_profiles()
+
+    def _is_profile_message(self, msg: discord.Message) -> str | None:
+        """Bot自身が貼ったプロフィール表示メッセージなら、対象ユーザー名を返す。
+        該当しなければ None。"""
+        if self.bot.user is None or msg.author.id != self.bot.user.id:
+            return None
+        if not msg.embeds:
+            return None
+        embed = msg.embeds[0]
+        title = embed.title or ""
+        if not title.endswith(_PROFILE_TITLE_SUFFIX):
+            return None
+        author_name = embed.author.name if embed.author else None
+        if not author_name:
+            return None
+        m = _AUTHOR_USERNAME_RE.search(author_name)
+        return m.group(1) if m else None
+
+    async def _sweep_voice_profiles(self):
+        """全VCのテキストチャットを走査し、在室していない人のプロフィール表示を削除。
+        在室中の人の分は最新1件だけ残して sent_messages に再登録する。"""
+        for guild in self.bot.guilds:
+            for vc in guild.voice_channels:
+                present = {m.name: m for m in vc.members if not m.bot}
+                seen_member_ids: set[int] = set()
+                try:
+                    async for msg in vc.history(limit=50):
+                        username = self._is_profile_message(msg)
+                        if username is None:
+                            continue
+                        member = present.get(username)
+                        if member is None:
+                            # 在室していない → 置き去り。削除
+                            await self._safe_delete(msg)
+                            continue
+                        # 在室中：履歴は新しい順なので最初の1件が最新。以降は重複として削除
+                        if member.id in seen_member_ids:
+                            await self._safe_delete(msg)
+                        else:
+                            seen_member_ids.add(member.id)
+                            self.sent_messages[member.id] = msg
+                except discord.Forbidden:
+                    continue
+                except discord.HTTPException as e:
+                    logger.warning(f"VCプロフィール掃除の履歴取得に失敗しました（{vc.id}）: {e}")
+
+    @staticmethod
+    async def _safe_delete(msg: discord.Message):
+        try:
+            await msg.delete()
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -74,10 +140,7 @@ class VoiceProfile(commands.Cog):
         # --- 古いメッセージを削除する処理 ---
         bot_msg = self.sent_messages.pop(member.id, None)
         if bot_msg:
-            try:
-                await bot_msg.delete()
-            except (discord.NotFound, discord.Forbidden):
-                pass
+            await self._safe_delete(bot_msg)
 
         # --- 新しいチャンネルにメッセージを送る処理 ---
         if after.channel is None:

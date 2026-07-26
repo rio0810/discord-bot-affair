@@ -26,13 +26,16 @@ class DiscordBot(commands.Bot):
         # ロギングの初期化（コンソール＋設定時は ERROR 以上を Discord へ）
         setup_logging(self)
 
-        # cogの読み込み
-        for root, dirs, files in os.walk('./cogs'):
-            for filename in files:
-                if filename.endswith('.py'):
-                    path = os.path.join(root, filename)
-                    ext_path = path.replace("./", "").replace("/", ".").replace("\\", ".")[:-3]
-                    await self.load_extension(ext_path)
+        # cog（拡張機能）の読み込み
+        #  - cogs/*.py … 単体ファイルの cog
+        #  - cogs/<feature>/__init__.py … パッケージ化した cog（内部モジュールは直接読み込まない）
+        cogs_dir = "./cogs"
+        for entry in sorted(os.listdir(cogs_dir)):
+            full = os.path.join(cogs_dir, entry)
+            if os.path.isfile(full) and entry.endswith(".py") and not entry.startswith("_"):
+                await self.load_extension(f"cogs.{entry[:-3]}")
+            elif os.path.isdir(full) and os.path.isfile(os.path.join(full, "__init__.py")):
+                await self.load_extension(f"cogs.{entry}")
         try:
             await self.tree.sync()
         except discord.HTTPException as e:
