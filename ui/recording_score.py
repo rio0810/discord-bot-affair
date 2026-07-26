@@ -162,9 +162,6 @@ class VerdictButton(
         if cog is None:
             await interaction.response.send_message("❌ 現在この機能は利用できません。", ephemeral=True)
             return
-        if not cog.is_admin(interaction.user):
-            await interaction.response.send_message("❌ 合否判定は管理者のみ可能です。", ephemeral=True)
-            return
         await interaction.response.send_modal(VerdictModal(self.submitter_id))
 
 
