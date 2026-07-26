@@ -16,6 +16,16 @@ ROMANCE_ROLE_ID = int(os.getenv("ROMANCE_ROLE_ID", "0"))
 # 雑談ロール保持者から隠すカテゴリ（未設定なら非表示処理をしない）
 ZERO_ROMANCE_HIDDEN_CATEGORY_ID = int(os.getenv("ZERO_ROMANCE_HIDDEN_CATEGORY_ID", "0"))
 
+# DM・フレンド申請の基準（雑談・恋愛共通の質問）。選択に応じてロールを付与する
+DM_CRITERIA_FIELD = "DM・フレンド申請の基準"
+DM_CRITERIA_OPTIONS = ["🙆 誰でもOK", "🙅 DM×", "🙋 話したことあるなら"]
+# 各選択肢に対応するロールID（未設定＝付与しない）。3つは相互排他で付け替える
+DM_CRITERIA_ROLE_IDS: dict[str, int] = {
+    "🙆 誰でもOK": int(os.getenv("DM_OPEN_ROLE_ID", "0")),
+    "🙅 DM・フレンド申請☓": int(os.getenv("DM_CLOSED_ROLE_ID", "0")),
+    "🙋 話したことあるなら": int(os.getenv("DM_ACQUAINTED_ROLE_ID", "0")),
+}
+
 # ---------------------------------------------------------------------- #
 # 選択肢の定義
 # ---------------------------------------------------------------------- #
@@ -77,6 +87,7 @@ FIELDS: list[tuple[str, list[str]]] = [
     ("恋愛の割合", [f"{i}割" for i in range(1, 11)]),
     ("遠距離恋愛出来る範囲", ["遠距離", "中距離", "近距離"]),
     ("MBTI", MBTI_TYPES),
+    (DM_CRITERIA_FIELD, DM_CRITERIA_OPTIONS),
 ]
 
 
@@ -133,7 +144,7 @@ def _build_steps() -> list[tuple]:
 STEPS = _build_steps()
 
 # 雑談ロール向けの短縮ステップ（名前・趣味は入口Modal、残りをここで選択）
-CASUAL_STEP_LABELS = ["年齢", "血液型", "居住地", "MBTI"]
+CASUAL_STEP_LABELS = ["年齢", "血液型", "居住地", "MBTI", DM_CRITERIA_FIELD]
 CASUAL_STEPS = [("select", label, FIELD_OPTIONS[label]) for label in CASUAL_STEP_LABELS]
 
 
@@ -181,6 +192,28 @@ async def _apply_choice_role(guild: discord.Guild, member: discord.Member, casua
         await _hide_category_from_role(guild, zero_role)
 
 
+async def _apply_dm_criteria_role(guild: discord.Guild, member: discord.Member, choice: str):
+    """DM・フレンド申請の基準の選択に応じてロールを付与（3つは相互排他）。"""
+    if guild is None or not isinstance(member, discord.Member):
+        return
+    grant_id = DM_CRITERIA_ROLE_IDS.get(choice, 0)
+    grant = guild.get_role(grant_id) if grant_id else None
+    # 他の基準ロールを外す（選び直しに対応）
+    others = [
+        guild.get_role(rid)
+        for label, rid in DM_CRITERIA_ROLE_IDS.items()
+        if rid and label != choice
+    ]
+    try:
+        for role in others:
+            if role is not None and role in member.roles:
+                await member.remove_roles(role, reason="DM・フレンド申請の基準の選択（変更）")
+        if grant is not None and grant not in member.roles:
+            await member.add_roles(grant, reason="DM・フレンド申請の基準の選択")
+    except (discord.Forbidden, discord.HTTPException):
+        print(f"[ERROR] DM基準ロールの付与に失敗しました: {member.id}")
+
+
 def build_profile_text(
     name: str, hobby: str, fav_type: str, answers: dict[str, str], casual: bool = False
 ) -> str:
@@ -194,6 +227,7 @@ def build_profile_text(
             f"【居住地】{answers.get('居住地', '未回答')}",
             f"【趣味】{hobby}",
             f"【MBTI】{answers.get('MBTI', '未回答')}",
+            f"【{DM_CRITERIA_FIELD}】{answers.get(DM_CRITERIA_FIELD, '未回答')}",
         ])
 
     lines = [f"【名前】{name}"]
@@ -474,10 +508,15 @@ class ProfileWizardView(discord.ui.View):
                 # 女性は音声不要。プロフィールのみで即審査へ
                 await cog.on_profile_only(interaction, embed)
 
+        # DM・フレンド申請の基準の選択に応じたロールを付与（雑談・恋愛共通）
+        dm_choice = self.answers.get(DM_CRITERIA_FIELD)
+        if dm_choice:
+            await _apply_dm_criteria_role(interaction.guild, interaction.user, dm_choice)
+
         # 障害・ハンデの申告があれば運営チャンネルにのみ共有（公開しない）
         if self.disability:
             await _send_staff_private_note(interaction, self.disability)
-        # ロール付与は入口の「雑談 / 恋愛」選択時に済ませているのでここでは行わない
+        # 雑談/恋愛の種別ロールは入口の選択時に済ませているのでここでは行わない
 
 
 # ---------------------------------------------------------------------- #

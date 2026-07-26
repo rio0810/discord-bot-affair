@@ -75,6 +75,15 @@ CREATE TABLE IF NOT EXISTS profile_created (
 CREATE TABLE IF NOT EXISTS interview_reviewers (
     user_id BIGINT PRIMARY KEY
 );
+-- 転送済みの審査（未採点メンション・強制結果の期限管理用）
+CREATE TABLE IF NOT EXISTS interview_reviews (
+    message_id BIGINT PRIMARY KEY,
+    channel_id BIGINT NOT NULL,
+    submitter_id BIGINT NOT NULL,
+    kind CHAR(1) DEFAULT 'm',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    reminded BOOLEAN NOT NULL DEFAULT FALSE
+);
 
 -- 8. MPチケットで作成した個人テキストチャット（1人1つまで判定用）
 CREATE TABLE IF NOT EXISTS mp_text_channels (

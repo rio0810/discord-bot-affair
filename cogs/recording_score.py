@@ -1,9 +1,15 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 import json
+from datetime import datetime, timedelta, timezone
 
 from core.db_base import DatabaseBase
+
+# 提出から未採点者へメンションするまでの経過時間
+REMIND_AFTER = timedelta(hours=12)
+# 提出から強制的に結果を出すまでの経過時間（案内する24時間期限の3時間前）
+FORCE_AFTER = timedelta(hours=21)
 
 # 提出が揃って審査に回ったときの案内文（男女共通）
 SUBMITTED_MSG = (
@@ -56,6 +62,10 @@ class RecordingScore(commands.Cog, DatabaseBase):
         self.bot.add_dynamic_items(ScoreButton)
         self.bot.add_dynamic_items(ScoreStatusButton)
         self.bot.add_dynamic_items(VerdictButton)
+        self.review_deadline_loop.start()
+
+    async def cog_unload(self):
+        self.review_deadline_loop.cancel()
 
     def is_admin(self, member: discord.Member) -> bool:
         if getattr(member, "guild_permissions", None) and member.guild_permissions.administrator:
@@ -320,10 +330,11 @@ class RecordingScore(commands.Cog, DatabaseBase):
         if fch is None:
             return
         if audio:
-            await forward_recording(
+            result = await forward_recording(
                 fch, interaction.user, audio, embed=embed,
                 source_channel=interaction.channel, kind="m",
             )
+            self._register_review(result, interaction.user.id, "m")
             self._mark_done(interaction.user.id)
             try:
                 await interaction.channel.send(SUBMITTED_MSG)
@@ -344,9 +355,10 @@ class RecordingScore(commands.Cog, DatabaseBase):
         fch = self._forward_channel("f")
         if fch is None:
             return
-        await forward_recording(
+        result = await forward_recording(
             fch, interaction.user, [], embed=embed, source_channel=interaction.channel, kind="f",
         )
+        self._register_review(result, interaction.user.id, "f")
         try:
             await interaction.channel.send(SUBMITTED_MSG)
         except (discord.Forbidden, discord.HTTPException):
@@ -372,10 +384,11 @@ class RecordingScore(commands.Cog, DatabaseBase):
         if fch is None:
             return
         embed = discord.Embed.from_dict(pending)
-        await forward_recording(
+        result = await forward_recording(
             fch, message.author, audio_attachments, embed=embed,
             source_channel=message.channel, kind="m",
         )
+        self._register_review(result, message.author.id, "m")
         self._mark_done(message.author.id)
         try:
             await message.channel.send(SUBMITTED_MSG)
@@ -520,6 +533,17 @@ class RecordingScore(commands.Cog, DatabaseBase):
                             user_id BIGINT PRIMARY KEY
                         )
                     """)
+                    # 転送済みの審査（未採点メンション・強制結果の期限管理用）
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS interview_reviews (
+                            message_id BIGINT PRIMARY KEY,
+                            channel_id BIGINT NOT NULL,
+                            submitter_id BIGINT NOT NULL,
+                            kind CHAR(1) DEFAULT 'm',
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                            reminded BOOLEAN NOT NULL DEFAULT FALSE
+                        )
+                    """)
                     conn.commit()
         except Exception as e:
             print(f"[ERROR] recording_scores テーブルの作成に失敗しました: {e}")
@@ -563,7 +587,8 @@ class RecordingScore(commands.Cog, DatabaseBase):
 
         # 審査メンバーが登録されていない間は結果を出さない
         if required > 0 and count >= required and self._claim_result(message_id):
-            await self._post_result(interaction, message_id, submitter_id)
+            await self._post_result(interaction.channel, message_id, submitter_id)
+            self._delete_review(message_id)
 
     def _claim_verdict(self, submitter_id: int) -> bool:
         """合否判定の権利を取る（1人につき最初の1回だけ True）。"""
@@ -612,7 +637,141 @@ class RecordingScore(commands.Cog, DatabaseBase):
             print(f"[ERROR] 結果権利の取得に失敗しました: {e}")
             return False
 
-    async def _post_result(self, interaction: discord.Interaction, message_id: int, submitter_id: int):
+    # ------------------------------------------------------------------ #
+    # 審査の期限管理（未採点メンション・強制結果）
+    # ------------------------------------------------------------------ #
+    def _register_review(self, result, submitter_id: int, kind: str):
+        """転送された審査を期限管理テーブルに登録する。result は forward_recording の戻り値。"""
+        if not result:
+            return
+        message_id, channel = result
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO interview_reviews (message_id, channel_id, submitter_id, kind) "
+                        "VALUES (%s, %s, %s, %s) ON CONFLICT (message_id) DO NOTHING",
+                        (message_id, channel.id, submitter_id, kind),
+                    )
+                    conn.commit()
+        except Exception as e:
+            print(f"[ERROR] 審査の期限登録に失敗しました: {e}")
+
+    def _delete_review(self, message_id: int):
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM interview_reviews WHERE message_id = %s", (message_id,))
+                    conn.commit()
+        except Exception as e:
+            print(f"[ERROR] 審査の期限削除に失敗しました: {e}")
+
+    def _list_pending_reviews(self):
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT message_id, channel_id, submitter_id, kind, created_at, reminded "
+                        "FROM interview_reviews"
+                    )
+                    return cur.fetchall()
+        except Exception as e:
+            print(f"[ERROR] 未処理審査の取得に失敗しました: {e}")
+            return []
+
+    def _mark_reminded(self, message_id: int):
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE interview_reviews SET reminded = TRUE WHERE message_id = %s",
+                        (message_id,),
+                    )
+                    conn.commit()
+        except Exception as e:
+            print(f"[ERROR] 未採点メンション済みフラグの記録に失敗しました: {e}")
+
+    async def _resolve_channel(self, channel_id: int):
+        ch = self.bot.get_channel(channel_id)
+        if ch is not None:
+            return ch
+        try:
+            return await self.bot.fetch_channel(channel_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
+
+    @tasks.loop(minutes=10)
+    async def review_deadline_loop(self):
+        rows = self._list_pending_reviews()
+        if not rows:
+            return
+        now = datetime.now(timezone.utc)
+        for message_id, channel_id, submitter_id, _kind, created_at, reminded in rows:
+            age = now - created_at
+            if age >= FORCE_AFTER:
+                await self._force_result(message_id, channel_id, submitter_id)
+            elif age >= REMIND_AFTER and not reminded:
+                await self._remind_unscored(message_id, channel_id)
+
+    @review_deadline_loop.before_loop
+    async def before_review_deadline_loop(self):
+        await self.bot.wait_until_ready()
+
+    async def _remind_unscored(self, message_id: int, channel_id: int):
+        """12時間経っても採点していない審査メンバーにメンションする。"""
+        reviewers = self._list_reviewers()
+        scored = self.scored_reviewer_ids(message_id)
+        pending = [uid for uid in reviewers if uid not in scored]
+        # 対象がいない（未登録 or 全員採点済み）なら再チェック不要にして終了
+        if not pending:
+            self._mark_reminded(message_id)
+            return
+        channel = await self._resolve_channel(channel_id)
+        if channel is None:
+            return  # 一時的に取得できないだけかもしれないので次回に持ち越す
+        mentions = " ".join(f"<@{uid}>" for uid in pending)
+        try:
+            await channel.send(
+                f"{mentions}\n"
+                "⏰ 提出から12時間が経過しましたが、まだ採点が完了していません。\n"
+                "審査期限（提出から24時間）まで残りわずかです。採点をお願いします🙏",
+                allowed_mentions=discord.AllowedMentions(users=True),
+            )
+        except (discord.Forbidden, discord.HTTPException) as e:
+            print(f"[ERROR] 未採点メンションの送信に失敗しました: {e}")
+        self._mark_reminded(message_id)
+
+    async def _force_result(self, message_id: int, channel_id: int, submitter_id: int):
+        """審査期限（残り3時間）に達したら、集まった採点で強制的に結果を出す。"""
+        # 既に通常フローで結果が出ていれば行を消して終了
+        if not self._claim_result(message_id):
+            self._delete_review(message_id)
+            return
+        channel = await self._resolve_channel(channel_id)
+        scored = self.scored_reviewer_ids(message_id)
+        if channel is not None:
+            if scored:
+                await self._post_result(channel, message_id, submitter_id, forced=True)
+            elif isinstance(channel, discord.Thread):
+                admin_role = channel.guild.get_role(self.admin_role_id) if self.admin_role_id else None
+                mention = admin_role.mention if admin_role else ""
+                allowed = (
+                    discord.AllowedMentions(roles=[admin_role]) if admin_role
+                    else discord.AllowedMentions.none()
+                )
+                try:
+                    await channel.send(
+                        f"{mention}\n⏰ 審査期限に達しましたが、採点が1件も集まりませんでした。",
+                        allowed_mentions=allowed,
+                    )
+                except (discord.Forbidden, discord.HTTPException) as e:
+                    print(f"[ERROR] 強制結果（採点なし）の送信に失敗しました: {e}")
+        self._delete_review(message_id)
+
+    async def _post_result(self, channel, message_id: int, submitter_id: int, forced: bool = False):
+        # 審査結果はフォーラムの審査ポスト（スレッド）内にだけ出す。テキストチャンネルには出さない。
+        if not isinstance(channel, discord.Thread):
+            return
         try:
             with self.get_db() as conn:
                 with conn.cursor() as cur:
@@ -627,7 +786,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         if not rows:
             return
 
-        guild = interaction.guild
+        guild = channel.guild
         n = len(rows)
         kind = rows[0][6] or "m"
         cats = categories_for(kind)  # 種別に応じた採点項目
@@ -670,6 +829,10 @@ class RecordingScore(commands.Cog, DatabaseBase):
         if admin_role is not None:
             container.add_item(discord.ui.TextDisplay(admin_role.mention))
         container.add_item(discord.ui.TextDisplay("## 📊 審査結果"))
+        if forced:
+            container.add_item(discord.ui.TextDisplay(
+                "⏰ 審査期限に達したため、集まった採点で自動集計しました。"
+            ))
         container.add_item(Sep(spacing=large))
         container.add_item(discord.ui.TextDisplay(
             f"**提出者：**{submitter_txt}\n"
@@ -693,13 +856,9 @@ class RecordingScore(commands.Cog, DatabaseBase):
         container.add_item(row)
         view.add_item(container)
 
-        # 審査結果はフォーラムの審査ポスト（スレッド）内にだけ出す。テキストチャンネルには出さない。
-        if not isinstance(interaction.channel, discord.Thread):
-            return
-
         allowed = discord.AllowedMentions(roles=[admin_role]) if admin_role else discord.AllowedMentions.none()
         try:
-            await interaction.channel.send(view=view, allowed_mentions=allowed)
+            await channel.send(view=view, allowed_mentions=allowed)
         except (discord.Forbidden, discord.HTTPException) as e:
             print(f"[ERROR] 採点結果の送信に失敗しました: {e}")
 
