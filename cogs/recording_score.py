@@ -27,6 +27,32 @@ def submitted_embed() -> discord.Embed:
         ),
         color=discord.Color.green(),
     )
+
+
+def profile_received_embed() -> discord.Embed:
+    """プロフィールは受け付けたが、まだ録音待ちのとき（男性）。"""
+    return discord.Embed(
+        title="🎙️ プロフィールを受け付けました",
+        description=(
+            "続いて **音声ファイル、または Discordの録音機能** で録音を"
+            "このチャンネルに投稿してください。\n"
+            "投稿されると運営の審査に回ります。"
+        ),
+        color=discord.Color.blurple(),
+    )
+
+
+def recording_received_embed() -> discord.Embed:
+    """録音は受け付けたが、まだプロフィール未作成のとき（男性）。"""
+    return discord.Embed(
+        title="🎤 録音を受け付けました",
+        description=(
+            "続いて **「📝 プロフィールを作成する」** ボタンから"
+            "プロフィールを作成してください。\n"
+            "（プロフィールの作成が完了すると、運営の審査に回ります）"
+        ),
+        color=discord.Color.blurple(),
+    )
 from ui.recording_score import (
     ScoreButton,
     ScoreStatusButton,
@@ -353,10 +379,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         else:
             self._store_pending(interaction.user.id, embed)
             try:
-                await interaction.channel.send(
-                    "🎙️ プロフィールを受け付けました。**音声ファイル、または Discordの録音機能**で"
-                    "録音をこのチャンネルに投稿すると、運営の審査に回ります。"
-                )
+                await interaction.channel.send(embed=profile_received_embed())
             except (discord.Forbidden, discord.HTTPException):
                 pass
 
@@ -370,7 +393,7 @@ class RecordingScore(commands.Cog, DatabaseBase):
         )
         self._register_review(result, interaction.user.id, "f")
         try:
-            await interaction.channel.send(SUBMITTED_MSG)
+            await interaction.channel.send(embed=submitted_embed())
         except (discord.Forbidden, discord.HTTPException):
             pass
 
@@ -383,9 +406,9 @@ class RecordingScore(commands.Cog, DatabaseBase):
             # プロフィール未作成 → 録音は受け付けつつ、プロフィール作成を催促
             try:
                 await message.channel.send(
-                    f"{message.author.mention} 🎤 録音を受け付けました！\n"
-                    "続いて **「📝 プロフィールを作成する」** ボタンからプロフィールを作成してください。\n"
-                    "（プロフィールの作成が完了すると、運営の審査に回ります）"
+                    content=message.author.mention,
+                    embed=recording_received_embed(),
+                    allowed_mentions=discord.AllowedMentions(users=[message.author]),
                 )
             except (discord.Forbidden, discord.HTTPException):
                 pass

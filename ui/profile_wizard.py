@@ -22,12 +22,13 @@ ZERO_ROMANCE_HIDDEN_CATEGORY_ID = int(os.getenv("ZERO_ROMANCE_HIDDEN_CATEGORY_ID
 
 # DM・フレンド申請の基準（雑談・恋愛共通の質問）。選択に応じてロールを付与する
 DM_CRITERIA_FIELD = "DM・フレンド申請の可否"
-DM_CRITERIA_OPTIONS = ["🙆 誰でもOK", "🙅 DM・フレンド申請☓", "🙋 話したことあるなら"]
-# 各選択肢に対応するロールID（未設定＝付与しない）。3つは相互排他で付け替える
+DM_CRITERIA_OPTIONS = ["🙆 誰でもOK", "🙅 DM・フレンド申請☓", "🙋 話したことあるなら", "🗣️ 直接聞いてもらってから"]
+# 各選択肢に対応するロールID（未設定＝付与しない）。相互排他で付け替える
 DM_CRITERIA_ROLE_IDS: dict[str, int] = {
     "🙆 誰でもOK": int(os.getenv("DM_OPEN_ROLE_ID", "0")),
     "🙅 DM・フレンド申請☓": int(os.getenv("DM_CLOSED_ROLE_ID", "0")),
     "🙋 話したことあるなら": int(os.getenv("DM_ACQUAINTED_ROLE_ID", "0")),
+    "🗣️ 直接聞いてもらってから": int(os.getenv("DM_ASK_ROLE_ID", "0")),
 }
 
 # ---------------------------------------------------------------------- #

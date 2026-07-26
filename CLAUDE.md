@@ -29,7 +29,7 @@ Copy `.env.example` to `.env` and fill in:
 | `ZERO_ROMANCE_ROLE_ID` | 雑談 role auto-granted when a user picks 恋愛の割合「0割」 in the profile wizard (optional). Mutually exclusive with `ROMANCE_ROLE_ID` |
 | `ROMANCE_ROLE_ID` | 恋愛 role auto-granted when a user picks 恋愛の割合「1割以上」 (optional). Mutually exclusive with `ZERO_ROMANCE_ROLE_ID` |
 | `ZERO_ROMANCE_HIDDEN_CATEGORY_ID` | Category hidden (role-level `view_channel=False` overwrite) from `ZERO_ROMANCE_ROLE_ID` holders; set when the role is first granted (optional) |
-| `DM_OPEN_ROLE_ID` / `DM_CLOSED_ROLE_ID` / `DM_ACQUAINTED_ROLE_ID` | Roles auto-granted (mutually exclusive) from the profile wizard's 「DM・フレンド申請の基準」 select — 誰でもOK / DM× / 話したことあるなら respectively. Common to both 雑談 and 恋愛 profiles (optional) |
+| `DM_OPEN_ROLE_ID` / `DM_CLOSED_ROLE_ID` / `DM_ACQUAINTED_ROLE_ID` / `DM_ASK_ROLE_ID` | Roles auto-granted (mutually exclusive) from the profile wizard's 「DM・フレンド申請の可否」 select — 誰でもOK / DM× / 話したことあるなら / 直接聞いてもらってから respectively. Common to both 雑談 and 恋愛 profiles (optional) |
 | `ADMIN_ROLE_ID` | Role ID that can use admin commands |
 | `ERROR_LOG_CHANNEL_ID` | Text channel that `ERROR`+ logs are streamed to (via `core/log_to_discord.py`'s logging handler). Console/Railway logging still works regardless; no Discord streaming if unset (optional) |
 | `EXCLUDED_CHANNEL_IDS` | Comma-separated VC IDs excluded from VC-time tracking |
