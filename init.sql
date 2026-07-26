@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS interview_verdicts (
 CREATE TABLE IF NOT EXISTS profile_created (
     user_id BIGINT PRIMARY KEY
 );
+-- プロフ審査を担当するメンバー（採点者。必要採点人数＝この登録人数）
+CREATE TABLE IF NOT EXISTS interview_reviewers (
+    user_id BIGINT PRIMARY KEY
+);
 
 -- 8. MPチケットで作成した個人テキストチャット（1人1つまで判定用）
 CREATE TABLE IF NOT EXISTS mp_text_channels (

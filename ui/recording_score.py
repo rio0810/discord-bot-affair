@@ -1,5 +1,3 @@
-import os
-
 import discord
 
 # 転送対象とみなす音声ファイルの拡張子
@@ -29,8 +27,6 @@ def categories_for(kind: str) -> list[tuple[str, str]]:
         return [(k, label) for k, label in SCORE_CATEGORIES if k in FEMALE_KEYS]
     return SCORE_CATEGORIES
 
-# 何人が採点したら結果を出すか（環境変数で変更可・既定4人）
-SCORE_REVIEWER_COUNT = int(os.getenv("SCORE_REVIEWER_COUNT") or "4")
 # 合計平均が「1項目あたり満点2点」換算でこの割合以上なら合格（5/8 = 62.5%）
 PASS_THRESHOLD = 5.0
 
@@ -101,7 +97,16 @@ class ScoreButton(
         return cls(int(match["submitter"]), match["kind"] or "m")
 
     async def callback(self, interaction: discord.Interaction):
-        # （検証用）自分のプロフィールも採点可能にしている
+        cog = interaction.client.get_cog("RecordingScore")
+        if cog is None:
+            await interaction.response.send_message("❌ 現在この機能は利用できません。", ephemeral=True)
+            return
+        # 登録された審査メンバーのみ採点可
+        if not cog.is_reviewer(interaction.user.id):
+            await interaction.response.send_message(
+                "❌ 採点は登録された審査メンバーのみ可能です。", ephemeral=True
+            )
+            return
         await interaction.response.send_modal(
             ScoreModal(self.submitter_id, interaction.message.id, self.kind)
         )

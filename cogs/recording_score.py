@@ -13,7 +13,6 @@ SUBMITTED_MSG = (
 from ui.recording_score import (
     ScoreButton,
     VerdictButton,
-    SCORE_REVIEWER_COUNT,
     PASS_THRESHOLD,
     categories_for,
     forward_recording,
@@ -58,6 +57,128 @@ class RecordingScore(commands.Cog, DatabaseBase):
             return True
         role = member.guild.get_role(self.admin_role_id) if self.admin_role_id else None
         return role is not None and role in member.roles
+
+    # ------------------------------------------------------------------ #
+    # 審査メンバー（採点者）の登録・管理
+    # ------------------------------------------------------------------ #
+    def is_reviewer(self, user_id: int) -> bool:
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM interview_reviewers WHERE user_id = %s", (user_id,))
+                    return cur.fetchone() is not None
+        except Exception as e:
+            print(f"[ERROR] 審査メンバーの照会に失敗しました: {e}")
+            return False
+
+    def _reviewer_count(self) -> int:
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM interview_reviewers")
+                    return cur.fetchone()[0]
+        except Exception as e:
+            print(f"[ERROR] 審査メンバー数の取得に失敗しました: {e}")
+            return 0
+
+    def _add_reviewer(self, user_id: int) -> bool:
+        """登録できたら True、既に登録済みなら False。"""
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO interview_reviewers (user_id) VALUES (%s) "
+                        "ON CONFLICT DO NOTHING RETURNING user_id",
+                        (user_id,),
+                    )
+                    added = cur.fetchone() is not None
+                    conn.commit()
+                    return added
+        except Exception as e:
+            print(f"[ERROR] 審査メンバーの登録に失敗しました: {e}")
+            return False
+
+    def _remove_reviewer(self, user_id: int) -> bool:
+        """削除できたら True、元々登録が無ければ False。"""
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM interview_reviewers WHERE user_id = %s RETURNING user_id",
+                        (user_id,),
+                    )
+                    removed = cur.fetchone() is not None
+                    conn.commit()
+                    return removed
+        except Exception as e:
+            print(f"[ERROR] 審査メンバーの削除に失敗しました: {e}")
+            return False
+
+    def _list_reviewers(self) -> list[int]:
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT user_id FROM interview_reviewers")
+                    return [r[0] for r in cur.fetchall()]
+        except Exception as e:
+            print(f"[ERROR] 審査メンバー一覧の取得に失敗しました: {e}")
+            return []
+
+    @discord.app_commands.command(
+        name="reviewer_add", description="管理者: プロフ審査を担当するメンバーを登録します"
+    )
+    @discord.app_commands.describe(member="審査メンバーに登録するメンバー")
+    async def reviewer_add(self, interaction: discord.Interaction, member: discord.Member):
+        if not self.is_admin(interaction.user):
+            await interaction.response.send_message("❌ このコマンドは管理者のみ使用できます。", ephemeral=True)
+            return
+        if self._add_reviewer(member.id):
+            count = self._reviewer_count()
+            await interaction.response.send_message(
+                f"✅ {member.mention} を審査メンバーに登録しました。（現在 {count}人）", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"ℹ️ {member.mention} は既に審査メンバーです。", ephemeral=True
+            )
+
+    @discord.app_commands.command(
+        name="reviewer_remove", description="管理者: プロフ審査メンバーの登録を解除します"
+    )
+    @discord.app_commands.describe(member="登録を解除するメンバー")
+    async def reviewer_remove(self, interaction: discord.Interaction, member: discord.Member):
+        if not self.is_admin(interaction.user):
+            await interaction.response.send_message("❌ このコマンドは管理者のみ使用できます。", ephemeral=True)
+            return
+        if self._remove_reviewer(member.id):
+            count = self._reviewer_count()
+            await interaction.response.send_message(
+                f"✅ {member.mention} の審査メンバー登録を解除しました。（現在 {count}人）", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"ℹ️ {member.mention} は審査メンバーに登録されていません。", ephemeral=True
+            )
+
+    @discord.app_commands.command(
+        name="reviewer_list", description="管理者: 登録済みのプロフ審査メンバーを一覧表示します"
+    )
+    async def reviewer_list(self, interaction: discord.Interaction):
+        if not self.is_admin(interaction.user):
+            await interaction.response.send_message("❌ このコマンドは管理者のみ使用できます。", ephemeral=True)
+            return
+        ids = self._list_reviewers()
+        if not ids:
+            await interaction.response.send_message(
+                "審査メンバーはまだ登録されていません。", ephemeral=True
+            )
+            return
+        lines = [f"- <@{uid}>" for uid in ids]
+        await interaction.response.send_message(
+            f"**審査メンバー（{len(ids)}人）**\n" + "\n".join(lines),
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
     async def apply_verdict(self, interaction: discord.Interaction, submitter_id: int, verdict: str):
         guild = interaction.guild
@@ -372,6 +493,11 @@ class RecordingScore(commands.Cog, DatabaseBase):
                             user_id BIGINT PRIMARY KEY
                         )
                     """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS interview_reviewers (
+                            user_id BIGINT PRIMARY KEY
+                        )
+                    """)
                     conn.commit()
         except Exception as e:
             print(f"[ERROR] recording_scores テーブルの作成に失敗しました: {e}")
@@ -408,11 +534,13 @@ class RecordingScore(commands.Cog, DatabaseBase):
             await interaction.response.send_message("❌ 採点の記録に失敗しました。", ephemeral=True)
             return
 
+        required = self._reviewer_count()
         await interaction.response.send_message(
-            f"✅ 採点を受け付けました（{count}/{SCORE_REVIEWER_COUNT}人）。", ephemeral=True
+            f"✅ 採点を受け付けました（{count}/{required}人）。", ephemeral=True
         )
 
-        if count >= SCORE_REVIEWER_COUNT and self._claim_result(message_id):
+        # 審査メンバーが登録されていない間は結果を出さない
+        if required > 0 and count >= required and self._claim_result(message_id):
             await self._post_result(interaction, message_id, submitter_id)
 
     def _claim_verdict(self, submitter_id: int) -> bool:
