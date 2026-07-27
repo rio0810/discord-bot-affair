@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 import discord
 
 from .constants import (
+    COLOR_ROLE_COST,
     EMOJI_COST,
     MOOD_PHOTO_COST,
-    ROLE_CREATE_COST,
     TEXT_CHANNEL_COST,
     TRIAL_RESET_COST,
 )
@@ -41,18 +41,29 @@ class TextChannelModal(discord.ui.Modal, title="個人専用テキストチャ�
         await self.cog.redeem_text_channel(interaction, str(self.ch_name), roles)
 
 
-class RoleCreateModal(discord.ui.Modal, title="ロール作成"):
-    role_name = discord.ui.TextInput(label="ロール名", max_length=100, placeholder="例：〇〇ファン")
-    color = discord.ui.TextInput(
-        label="色（#RRGGBB・任意）", max_length=7, required=False, placeholder="#FF0000",
-    )
+class ColorRoleModal(discord.ui.Modal, title="カラーロール作成"):
+    role_name = discord.ui.TextInput(label="ロール名", max_length=100, placeholder="例：〇〇カラー")
 
     def __init__(self, cog: "MPShop"):
         super().__init__()
         self.cog = cog
+        self.style = discord.ui.RadioGroup(
+            options=[
+                discord.RadioGroupOption(
+                    label="🌈 グラデーション", value="gradient",
+                    description="男性は青、女性は赤をベースにした2色グラデ",
+                ),
+                discord.RadioGroupOption(
+                    label="✨ ホログラフィック", value="holographic",
+                    description="Discord標準のきらめき配色（男女共通）",
+                ),
+            ],
+            required=True,
+        )
+        self.add_item(discord.ui.Label(text="色のスタイル", component=self.style))
 
     async def on_submit(self, interaction: discord.Interaction):
-        await self.cog.redeem_role_create(interaction, str(self.role_name), str(self.color))
+        await self.cog.redeem_color_role(interaction, str(self.role_name), self.style.value)
 
 
 class EmojiModal(discord.ui.Modal, title="サーバー絵文字を追加"):
@@ -100,8 +111,8 @@ class MPShopView(discord.ui.View):
                 description=f"閲覧ロールを指定して作成（{TEXT_CHANNEL_COST}枚）", emoji="📝",
             ),
             discord.SelectOption(
-                label="ロール作成", value="create_role",
-                description=f"名前と色を指定してロールを作成・付与（{ROLE_CREATE_COST}枚）", emoji="🎨",
+                label="カラーロール作成（グラデ/ホロ）", value="color_role",
+                description=f"グラデーション/ホログラフィックのロールを作成（{COLOR_ROLE_COST}枚）", emoji="🌈",
             ),
             discord.SelectOption(
                 label="雰囲気写真の閲覧権", value="mood_photo",

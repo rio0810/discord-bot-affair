@@ -10,17 +10,19 @@ from discord.ext import commands, tasks
 from core.admin_base import AdminCogBase
 
 from .constants import (
+    COLOR_ROLE_COST,
     EMOJI_COST,
     EMOJI_MAX_BYTES,
+    GRADIENT_COLORS,
+    HOLOGRAPHIC_COLORS,
     IMAGE_EXTENSIONS,
     MOOD_PHOTO_COST,
     MOOD_PHOTO_HOURS,
-    ROLE_CREATE_COST,
     TEXT_CHANNEL_COST,
     TRIAL_RESET_COST,
 )
 from .db import MPShopDBMixin
-from .ui import EmojiModal, MPShopView, RoleCreateModal, TextChannelModal
+from .ui import ColorRoleModal, EmojiModal, MPShopView, TextChannelModal
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +110,7 @@ class MPShop(commands.Cog, MPShopDBMixin):
                 "**商品を選ぶ** から交換できます。\n\n"
                 f"🔄 お試し個通のリセット … **{TRIAL_RESET_COST}枚**\n"
                 f"📝 個人専用テキストチャット作成 … **{TEXT_CHANNEL_COST}枚**（作成時に名前と閲覧ロールを指定）\n"
-                f"🎨 ロール作成 … **{ROLE_CREATE_COST}枚**（名前と色を指定して作成・付与）\n"
+                f"🌈 カラーロール作成 … **{COLOR_ROLE_COST}枚**（グラデーション/ホログラフィック・男=青/女=赤ベース）\n"
                 f"📷 雰囲気写真の閲覧権 … **{MOOD_PHOTO_COST}枚**（{MOOD_PHOTO_HOURS}時間以内に画像投稿しないと没収）\n"
                 f"😀 サーバー絵文字を追加 … **{EMOJI_COST}枚**（画像をアップロードして絵文字化）"
             ),
@@ -236,14 +238,14 @@ class MPShop(commands.Cog, MPShopDBMixin):
                 if role is not None:
                     role_options.append((role.id, role.name))
             await interaction.response.send_modal(TextChannelModal(self, role_options))
-        elif choice == "create_role":
+        elif choice == "color_role":
             n = self.get_tickets(interaction.user.id)
-            if n < ROLE_CREATE_COST:
+            if n < COLOR_ROLE_COST:
                 await interaction.response.send_message(
-                    f"❌ チケットが足りません（{ROLE_CREATE_COST}枚必要・所持 {n}枚）。", ephemeral=True
+                    f"❌ チケットが足りません（{COLOR_ROLE_COST}枚必要・所持 {n}枚）。", ephemeral=True
                 )
                 return
-            await interaction.response.send_modal(RoleCreateModal(self))
+            await interaction.response.send_modal(ColorRoleModal(self))
         elif choice == "mood_photo":
             await self._redeem_mood_photo(interaction)
         elif choice == "add_emoji":
@@ -411,48 +413,82 @@ class MPShop(commands.Cog, MPShopDBMixin):
             ephemeral=True,
         )
 
-    async def redeem_role_create(self, interaction: discord.Interaction, name: str, color_str: str):
-        # 色の検証（任意。未入力なら色なし）
-        color_str = color_str.strip().lstrip("#")
-        if color_str:
-            try:
-                cval = int(color_str, 16)
-                if len(color_str) != 6 or not (0 <= cval <= 0xFFFFFF):
-                    raise ValueError
-                colour = discord.Colour(cval)
-            except ValueError:
-                await interaction.response.send_message(
-                    "❌ 色は #RRGGBB 形式（例：#FF0000）で入力してください。", ephemeral=True
-                )
-                return
-        else:
-            colour = discord.Colour.default()
+    async def redeem_color_role(self, interaction: discord.Interaction, name: str, style: str):
+        guild = interaction.guild
+        member = interaction.user
 
-        if not self._spend(interaction.user.id, ROLE_CREATE_COST):
-            n = self.get_tickets(interaction.user.id)
+        # グラデーションのベース色は性別ロールで決定（ホログラフィックは固定配色）
+        if self.female_role_id and guild.get_role(self.female_role_id) in member.roles:
+            gender = "f"
+        elif self.male_role_id and guild.get_role(self.male_role_id) in member.roles:
+            gender = "m"
+        else:
             await interaction.response.send_message(
-                f"❌ チケットが足りません（{ROLE_CREATE_COST}枚必要・所持 {n}枚）。", ephemeral=True
+                "❌ この商品は男性/女性ロールが必要です。", ephemeral=True
             )
             return
 
-        guild = interaction.guild
-        member = interaction.user
+        if not self._spend(member.id, COLOR_ROLE_COST):
+            n = self.get_tickets(member.id)
+            await interaction.response.send_message(
+                f"❌ チケットが足りません（{COLOR_ROLE_COST}枚必要・所持 {n}枚）。", ephemeral=True
+            )
+            return
+
+        # 配色を決定（ホログラフィックは3色固定・グラデーションは性別ベースの2色）
+        if style == "holographic":
+            p, s, t = HOLOGRAPHIC_COLORS
+            colours = dict(
+                colour=discord.Colour(p),
+                secondary_colour=discord.Colour(s),
+                tertiary_colour=discord.Colour(t),
+            )
+            style_label = "ホログラフィック"
+        else:
+            p, s = GRADIENT_COLORS[gender]
+            colours = dict(colour=discord.Colour(p), secondary_colour=discord.Colour(s))
+            style_label = "グラデーション"
+
         try:
             # 新規ロールは既定で最下位（@everyone の直上）に作成される
             role = await guild.create_role(
-                name=name, colour=colour, reason=f"MPチケット交換：{member} のロール作成"
+                name=name, reason=f"MPチケット交換：{member} のカラーロール作成", **colours
             )
-            await member.add_roles(role, reason="MPチケット交換で作成したロールを付与")
+            await member.add_roles(role, reason="MPチケット交換で作成したカラーロールを付与")
         except (discord.Forbidden, discord.HTTPException) as e:
-            logger.error(f"ロールの作成/付与に失敗しました: {e}")
-            self._refund(member.id, ROLE_CREATE_COST)
+            logger.error(f"カラーロールの作成/付与に失敗しました: {e}")
+            self._refund(member.id, COLOR_ROLE_COST)
             await interaction.response.send_message(
-                "❌ ロールの作成に失敗しました。チケットは消費されていません。", ephemeral=True
+                "❌ カラーロールの作成に失敗しました。\n"
+                "グラデーション/ホログラフィックの色は **サーバーブースト（強化ロールカラー）が有効なサーバー** でのみ使えます。"
+                "Botの権限・ロール順もあわせてご確認ください。チケットは消費されていません。",
+                ephemeral=True,
             )
             return
 
+        # 表示色が他のロールに上書きされないよう、Botの最上位ロールの直下へ移動する
+        # （Botは自分の最上位ロールより下しか動かせないため、そこが置ける最上位）
+        top = guild.me.top_role
+        if top.position > 1:
+            try:
+                await role.edit(position=top.position - 1, reason="カラーロールを表示色が出る位置へ")
+            except (discord.Forbidden, discord.HTTPException) as e:
+                logger.warning(f"カラーロールの位置調整に失敗しました: {e}")
+
+        # 作り直しの場合は、以前のカラーロールを削除する（1人1つに保つ）
+        old_id = self._get_color_role_id(member.id)
+        if old_id and old_id != role.id:
+            old_role = guild.get_role(old_id)
+            if old_role is not None:
+                try:
+                    await old_role.delete(reason="カラーロール作り直しのため旧ロールを削除")
+                except (discord.Forbidden, discord.HTTPException) as e:
+                    logger.warning(f"旧カラーロールの削除に失敗しました: {e}")
+        self._save_color_role(member.id, role.id)
+
         await interaction.response.send_message(
-            f"✅ ロール {role.mention} を作成して付与しました！（-{ROLE_CREATE_COST}枚）", ephemeral=True
+            f"✅ カラーロール {role.mention} を作成して付与しました！（{style_label}・-{COLOR_ROLE_COST}枚）",
+            ephemeral=True,
         )
 
 

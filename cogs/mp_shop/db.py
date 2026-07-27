@@ -27,6 +27,12 @@ class MPShopDBMixin(DatabaseBase):
                             deadline TIMESTAMP NOT NULL
                         )
                     """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS mp_color_roles (
+                            user_id BIGINT PRIMARY KEY,
+                            role_id BIGINT NOT NULL
+                        )
+                    """)
                     conn.commit()
         except Exception as e:
             logger.error(f"mp_shop テーブルの作成に失敗しました: {e}")
@@ -136,6 +142,33 @@ class MPShopDBMixin(DatabaseBase):
                     conn.commit()
         except Exception as e:
             logger.error(f"個人テキストチャットの記録に失敗しました: {e}")
+
+    # ------------------------------------------------------------------ #
+    # カラーロール（作り直し時に旧ロールを消すための記録）
+    # ------------------------------------------------------------------ #
+    def _get_color_role_id(self, user_id: int) -> int | None:
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT role_id FROM mp_color_roles WHERE user_id = %s", (user_id,))
+                    row = cur.fetchone()
+                    return row[0] if row else None
+        except Exception as e:
+            logger.error(f"カラーロールの取得に失敗しました: {e}")
+            return None
+
+    def _save_color_role(self, user_id: int, role_id: int):
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO mp_color_roles (user_id, role_id) VALUES (%s, %s) "
+                        "ON CONFLICT (user_id) DO UPDATE SET role_id = EXCLUDED.role_id",
+                        (user_id, role_id),
+                    )
+                    conn.commit()
+        except Exception as e:
+            logger.error(f"カラーロールの記録に失敗しました: {e}")
 
     # ------------------------------------------------------------------ #
     # 雰囲気写真ノルマ
