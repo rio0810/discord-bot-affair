@@ -16,7 +16,7 @@ def is_audio(attachment: discord.Attachment) -> bool:
 
 # 採点項目：(DBキー, 表示ラベル)。各 0〜2 点。
 SCORE_CATEGORIES: list[tuple[str, str]] = [
-    ("profile", "プロフとの整合性（0〜2）"),
+    ("profile", "プロフとの内容（0〜2）"),
     ("voice", "聞き取りやすさ・イケボ（0〜2）"),
     ("talk", "トーク力（0〜2）"),
     ("character", "人柄（0〜2）"),

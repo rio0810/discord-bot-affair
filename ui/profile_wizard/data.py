@@ -34,7 +34,7 @@ PREFECTURES_WEST = [
     "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
     "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
 ]
-PREFECTURES = PREFECTURES_EAST + PREFECTURES_WEST
+PREFECTURES = PREFECTURES_EAST + PREFECTURES_WEST + ["海外"]
 
 # 職種はジャンル別に Select を分ける（下の OCCUPATION_GENRES が実体）
 OCCUPATION_GENRES: list[tuple[str, list[str]]] = [
@@ -51,7 +51,7 @@ OCCUPATION_GENRES: list[tuple[str, list[str]]] = [
         "サービス業", "美容関係", "アパレル", "クリエイター",
     ]),
     ("技術・その他", [
-        "建築関係", "製造業", "自営業", "休職中", "その他",
+        "建築関係", "製造業", "自営業", "学生", "休職中", "その他",
     ]),
 ]
 OCCUPATIONS = [o for _, opts in OCCUPATION_GENRES for o in opts]
@@ -103,6 +103,7 @@ NAMED_CHUNKS: dict[str, list[tuple[str, list[str]]]] = {
     "居住地": [
         ("東日本", PREFECTURES_EAST),
         ("西日本", PREFECTURES_WEST),
+        ("海外", ["海外"]),
     ],
     "職種": OCCUPATION_GENRES,
 }
