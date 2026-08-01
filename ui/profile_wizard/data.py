@@ -51,7 +51,7 @@ OCCUPATION_GENRES: list[tuple[str, list[str]]] = [
         "サービス業", "美容関係", "アパレル", "クリエイター",
     ]),
     ("技術・その他", [
-        "建築関係", "製造業", "自営業", "学生", "休職中", "その他",
+        "建築関係", "製造業", "自営業", "学生", "休職中", "求職中", "その他",
     ]),
 ]
 OCCUPATIONS = [o for _, opts in OCCUPATION_GENRES for o in opts]
