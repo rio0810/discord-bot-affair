@@ -230,22 +230,9 @@ class InterviewRoomCog(commands.Cog):
             and channel.topic.startswith(INTERVIEW_TOPIC_PREFIX)
         )
 
-    # ------------------------------------------------------------------ #
-    # 退出時：本人の専用チャンネルを掃除
-    # ------------------------------------------------------------------ #
-    @commands.Cog.listener()
-    async def on_member_remove(self, member: discord.Member):
-        if member.bot:
-            return
-
-        guild = member.guild
-        targets = {f"{INTERVIEW_TOPIC_PREFIX}{member.id}", f"{PROFILE_TOPIC_PREFIX}{member.id}"}
-        for channel in list(guild.text_channels):
-            if channel.topic in targets:
-                try:
-                    await channel.delete(reason=f"{member} がサーバーを退出したため専用チャンネルを削除")
-                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-                    pass
+    # 退出時に本人の面接/プロフ用チャンネルは削除しない（審査記録として残す）。
+    # 以前は on_member_remove で topic 一致のチャンネルを削除していたが、
+    # 審査対象が退出しても審査内容が消えないよう、削除は行わない。
 
 
 async def setup(bot: commands.Bot):
