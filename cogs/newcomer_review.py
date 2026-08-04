@@ -110,13 +110,15 @@ class NewcomerReview(commands.Cog, DatabaseBase):
                 ephemeral=True,
             )
             return
+        # DB操作＋スレッド作成で3秒を超えることがあるので先に defer する
+        await interaction.response.defer(ephemeral=True)
         # 再テストできるよう、投稿済み・判定済みフラグをリセットしてから投稿する
         self._unclaim_review(member.id)
         self._unclaim_verdict(member.id)
         # 投稿権を取ってから投稿（ループと同じ扱いにして二重投稿を防ぐ）
         self._claim_review(member.id)
         await self._post_review(interaction.guild, member)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ {member.mention} の1週間レビューを投稿しました（テスト・7日経過やプロフ有無は問いません）。",
             ephemeral=True,
         )
@@ -332,11 +334,14 @@ class NewcomerReview(commands.Cog, DatabaseBase):
             await interaction.response.send_message("この人の判定は既に処理済みです。", ephemeral=True)
             return
 
+        # ロール変更・BAN・DM で3秒を超えることがあるので先に defer する
+        await interaction.response.defer()
+
         if action == "promote":
             member = guild.get_member(uid)
             if member is None:
                 self._unclaim_verdict(uid)
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "❌ 対象者がサーバーにいないため、ロールを変更できませんでした。", ephemeral=True
                 )
                 return
@@ -349,14 +354,14 @@ class NewcomerReview(commands.Cog, DatabaseBase):
                     await member.add_roles(member_role, reason="1週間レビュー：メンバー昇格")
             except discord.Forbidden:
                 self._unclaim_verdict(uid)
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "❌ ロールの変更に失敗しました（Botの権限・ロール順を確認してください）。", ephemeral=True
                 )
                 return
             # 正式メンバーになったことを本人にDMで連絡（DM不可なら黙ってスキップ）
             dm_sent = await self._send_promotion_dm(member)
             note = "" if dm_sent else "\n（※本人へのDM送信はできませんでした）"
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"✅ {member.mention} を **メンバー** にしました。（新人ロール解除・メンバーロール付与）{note}"
             )
         else:  # ban
@@ -367,15 +372,15 @@ class NewcomerReview(commands.Cog, DatabaseBase):
                 )
             except discord.Forbidden:
                 self._unclaim_verdict(uid)
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "❌ BANに失敗しました（Botのban権限・ロール順を確認してください）。", ephemeral=True
                 )
                 return
             except discord.HTTPException as e:
                 self._unclaim_verdict(uid)
-                await interaction.response.send_message(f"❌ BANに失敗しました：{e}", ephemeral=True)
+                await interaction.followup.send(f"❌ BANに失敗しました：{e}", ephemeral=True)
                 return
-            await interaction.response.send_message(f"🔨 <@{uid}> を **BAN** しました。")
+            await interaction.followup.send(f"🔨 <@{uid}> を **BAN** しました。")
 
 
 async def setup(bot: commands.Bot):
