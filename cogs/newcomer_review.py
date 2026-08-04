@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 
 from core.db_base import DatabaseBase
@@ -15,42 +16,53 @@ REVIEW_AFTER = timedelta(days=7)
 
 
 # ---------------------------------------------------------------------- #
-# 判定ボタン（メンバー昇格 / BAN）— 再起動後も動く DynamicItem
+# 判定（判定ボタン → RadioGroup モーダル。プロフ審査の合否と同じ方式）
 # ---------------------------------------------------------------------- #
+class NewcomerVerdictModal(discord.ui.Modal, title="新人の判定"):
+    def __init__(self, uid: int):
+        super().__init__()
+        self.uid = uid
+        self.verdict = discord.ui.RadioGroup(
+            options=[
+                discord.RadioGroupOption(label="✅ メンバーにする", value="promote"),
+                discord.RadioGroupOption(label="🔨 BANする", value="ban"),
+            ],
+            required=True,
+        )
+        self.add_item(discord.ui.Label(text="判定を選択してください", component=self.verdict))
+
+    async def on_submit(self, interaction: discord.Interaction):
+        cog = interaction.client.get_cog("NewcomerReview")
+        if cog is None:
+            await interaction.response.send_message("❌ 現在この機能は利用できません。", ephemeral=True)
+            return
+        await cog.handle_verdict(interaction, self.uid, self.verdict.value)
+
+
 class NewcomerVerdictButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"nc_verdict:(?P<action>promote|ban):(?P<uid>[0-9]+)",
+    template=r"nc_verdict:(?P<uid>[0-9]+)",
 ):
-    def __init__(self, action: str, uid: int):
-        self.action = action
+    def __init__(self, uid: int):
         self.uid = uid
-        if action == "promote":
-            label, style, emoji = "メンバーにする", discord.ButtonStyle.green, "✅"
-        else:
-            label, style, emoji = "BANする", discord.ButtonStyle.red, "🔨"
         super().__init__(
             discord.ui.Button(
-                label=label, style=style, emoji=emoji,
-                custom_id=f"nc_verdict:{action}:{uid}",
+                label="判定する", style=discord.ButtonStyle.blurple, emoji="⚖️",
+                custom_id=f"nc_verdict:{uid}",
             )
         )
 
     @classmethod
     async def from_custom_id(cls, interaction, item, match):
-        return cls(match["action"], int(match["uid"]))
+        return cls(int(match["uid"]))
 
     async def callback(self, interaction: discord.Interaction):
-        cog = interaction.client.get_cog("NewcomerReview")
-        if cog is None:
-            await interaction.response.send_message("❌ 現在この機能は利用できません。", ephemeral=True)
-            return
-        await cog.handle_verdict(interaction, self.uid, self.action)
+        await interaction.response.send_modal(NewcomerVerdictModal(self.uid))
 
 
 def make_review_view(uid: int) -> discord.ui.View:
     view = discord.ui.View(timeout=None)
-    view.add_item(NewcomerVerdictButton("promote", uid))
-    view.add_item(NewcomerVerdictButton("ban", uid))
+    view.add_item(NewcomerVerdictButton(uid))
     return view
 
 
@@ -76,6 +88,38 @@ class NewcomerReview(commands.Cog, DatabaseBase):
 
     async def cog_unload(self):
         self.review_loop.cancel()
+
+    def is_admin(self, member: discord.Member) -> bool:
+        if getattr(member, "guild_permissions", None) and member.guild_permissions.administrator:
+            return True
+        role = member.guild.get_role(self.admin_role_id) if self.admin_role_id else None
+        return role is not None and role in member.roles
+
+    @app_commands.command(
+        name="newcomer_review_now",
+        description="管理者: 指定メンバーの1週間レビューを今すぐ投稿します（テスト・手動用）",
+    )
+    @app_commands.describe(member="レビューを投稿するメンバー")
+    async def newcomer_review_now(self, interaction: discord.Interaction, member: discord.Member):
+        if not self.is_admin(interaction.user):
+            await interaction.response.send_message("❌ このコマンドは管理者のみ使用できます。", ephemeral=True)
+            return
+        if self._forum() is None:
+            await interaction.response.send_message(
+                "❌ 投稿先フォーラム（NEWCOMER_REVIEW_FORUM_ID）が未設定か、フォーラムチャンネルではありません。",
+                ephemeral=True,
+            )
+            return
+        # 再テストできるよう、投稿済み・判定済みフラグをリセットしてから投稿する
+        self._unclaim_review(member.id)
+        self._unclaim_verdict(member.id)
+        # 投稿権を取ってから投稿（ループと同じ扱いにして二重投稿を防ぐ）
+        self._claim_review(member.id)
+        await self._post_review(interaction.guild, member)
+        await interaction.response.send_message(
+            f"✅ {member.mention} の1週間レビューを投稿しました（テスト・7日経過やプロフ有無は問いません）。",
+            ephemeral=True,
+        )
 
     def _ensure_tables(self):
         try:
@@ -240,7 +284,7 @@ class NewcomerReview(commands.Cog, DatabaseBase):
         view = make_review_view(member.id)
         content = (
             f"⏳ {member.mention} さんがサーバー加入から **1週間** 経過しました。\n"
-            "下のボタンで **メンバーへの昇格** または **BAN** を選んでください。"
+            "下の **「⚖️ 判定する」** ボタンから、**メンバーへの昇格** または **BAN** を選んでください。"
         )
         try:
             await forum.create_thread(
