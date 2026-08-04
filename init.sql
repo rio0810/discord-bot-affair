@@ -84,6 +84,21 @@ CREATE TABLE IF NOT EXISTS interview_reviews (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     reminded BOOLEAN NOT NULL DEFAULT FALSE
 );
+-- 新人の1週間レビュー用に保存するプロフィール embed
+CREATE TABLE IF NOT EXISTS member_profiles (
+    user_id BIGINT PRIMARY KEY,
+    embed_json TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- 1週間レビューを投稿済みの人（二重投稿防止）
+CREATE TABLE IF NOT EXISTS newcomer_reviews (
+    user_id BIGINT PRIMARY KEY,
+    posted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- 1週間レビューの判定済みの人（二重判定防止）
+CREATE TABLE IF NOT EXISTS newcomer_verdicts (
+    user_id BIGINT PRIMARY KEY
+);
 
 -- 8. MPチケットで作成した個人テキストチャット（1人1つまで判定用）
 CREATE TABLE IF NOT EXISTS mp_text_channels (

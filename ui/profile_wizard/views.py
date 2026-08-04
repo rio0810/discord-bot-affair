@@ -278,6 +278,11 @@ class ProfileWizardView(discord.ui.View):
                 # 女性は音声不要。プロフィールのみで即審査へ
                 await cog.on_profile_only(interaction, embed)
 
+        # 1週間レビュー用にプロフィール embed を保存（新人ロール昇格審査で再掲する）
+        nrc = interaction.client.get_cog("NewcomerReview")
+        if nrc is not None:
+            nrc.store_profile(interaction.user.id, embed)
+
         # DM・フレンド申請の可否の選択に応じたロールを付与（雑談・恋愛共通）
         dm_choice = self.answers.get(DM_CRITERIA_FIELD)
         if dm_choice:

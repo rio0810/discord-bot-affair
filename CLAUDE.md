@@ -38,7 +38,9 @@ Copy `.env.example` to `.env` and fill in:
 | `RECORDING_FORWARD_CHANNEL_ID` | Text channel recordings/審査 are forwarded to (no forwarding if unset) |
 | `RECORDING_FORUM_MALE_ID` / `RECORDING_FORUM_FEMALE_ID` | Per-gender 審査 forums (posts as a new thread titled with the submitter's name). Male reviews go to MALE, female to FEMALE; falls back to the `RECORDING_FORWARD_CHANNEL_ID` text channel |
 | `MALE_ROLE_ID` / `FEMALE_ROLE_ID` | Role IDs for the 1-on-1 call matching feature |
-| `NEWCOMER_ROLE_ID` | Members with this role can't use call matching (blocked from recruiting, hidden from target lists, and can't accept). Optional |
+| `NEWCOMER_ROLE_ID` | Members with this role can't use call matching (blocked from recruiting, hidden from target lists, and can't accept). Also the target of the 1-week newcomer review (`newcomer_review.py`). Optional |
+| `MEMBER_ROLE_ID` | Role granted (and `NEWCOMER_ROLE_ID` removed) when a newcomer is approved in the 1-week review (`newcomer_review.py`) |
+| `NEWCOMER_REVIEW_FORUM_ID` | Forum where the 1-week newcomer review is posted (a thread per member, titled with their name, carrying their saved profile + メンバー化/BAN buttons). No review runs if unset |
 | `WAITING_ROLE_ID` / `WAITING_CATEGORY_ID` | `waiting_room.py`: auto-assigns the waiting role on join; hides every category except `WAITING_CATEGORY_ID` (visible category is view-only, no send); removed when the role is taken away |
 | `REVIEW_ROLE_ID` | Role removed on 合格 verdict (defaults to `WAITING_ROLE_ID` if unset). On 合格 the reviewer removes it and adds `NEWCOMER_ROLE_ID`; on 不合格 the user is banned. Verdict button lives on the 審査結果 panel |
 | `MALE_PROFILE_CHANNEL_ID` / `FEMALE_PROFILE_CHANNEL_ID` | On 合格, the bot posts in the member's personal interview/profile channel (no DM fallback — skipped if the channel is missing) directing them to write their profile in the gender-matching channel here (male via `MALE_ROLE_ID`, female via `FEMALE_ROLE_ID`) |
@@ -83,6 +85,7 @@ commands.Cog + DatabaseBase (core/db_base.py)
 - `vc_rank.py` — tracks VC time every 1 min and updates users' rank
 - `temp_vc.py` — join-to-create temp VCs; sweeps empty temp VCs every 5 min (`temp_vcs` table); rename panel in the VC's text chat
 - `recording_score.py` — `review_deadline_loop` every 10 min: mentions unscored reviewers at 12h and force-finalizes the review at 21h (`interview_reviews` table)
+- `newcomer_review.py` — `review_loop` hourly: when a `NEWCOMER_ROLE_ID` holder has been in the server ≥7 days (`joined_at`), posts a thread to `NEWCOMER_REVIEW_FORUM_ID` with their saved profile embed (`member_profiles`, stored by the profile wizard) + メンバー化/BAN buttons (anyone can press). Dedup via `newcomer_reviews`; double-verdict guard via `newcomer_verdicts`. Approval removes `NEWCOMER_ROLE_ID` and adds `MEMBER_ROLE_ID`
 
 ## Slash Commands Reference
 
