@@ -258,20 +258,28 @@ class NewcomerReview(commands.Cog, DatabaseBase):
         ch = self.bot.get_channel(self.forum_id) if self.forum_id else None
         return ch if isinstance(ch, discord.ForumChannel) else None
 
-    def _profile_embed(self, member: discord.Member) -> discord.Embed:
+    def _review_embed(self, member: discord.Member) -> discord.Embed:
+        """レビュー投稿の内容を1つの embed にまとめる（案内文＋プロフィール）。"""
         stored = self._get_profile(member.id)
+        profile_text = ""
         if stored:
-            embed = discord.Embed.from_dict(stored)
+            profile_text = stored.get("description") or ""
         else:
-            embed = discord.Embed(
-                title=f"📋 {member.display_name} さんのプロフィール",
-                description="（プロフィールが保存されていません）",
-                color=discord.Color.light_grey(),
-            )
-            embed.set_thumbnail(url=member.display_avatar.url)
+            profile_text = "（プロフィールが保存されていません）"
+
+        embed = discord.Embed(
+            title="⏳ 新人審査",
+            description=(
+                f"{member.mention} さんがサーバー加入から **1週間** 経過しました。\n"
+                "下の **「⚖️ 判定する」** ボタンから、**メンバーへの昇格** または **BAN** を選んでください。"
+            ),
+            color=discord.Color.orange(),
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
         embed.add_field(name="対象メンバー", value=member.mention, inline=True)
         if member.joined_at is not None:
             embed.add_field(name="加入日", value=discord.utils.format_dt(member.joined_at, "D"), inline=True)
+        embed.add_field(name="📋 プロフィール", value=profile_text[:1024] or "（なし）", inline=False)
         return embed
 
     async def _post_review(self, guild: discord.Guild, member: discord.Member):
@@ -280,19 +288,14 @@ class NewcomerReview(commands.Cog, DatabaseBase):
             logger.warning(f"新人レビューのフォーラム {self.forum_id} が見つかりません。")
             self._unclaim_review(member.id)  # フォーラム未設定なら次回に持ち越す
             return
-        embed = self._profile_embed(member)
+        embed = self._review_embed(member)
         view = make_review_view(member.id)
-        content = (
-            f"⏳ {member.mention} さんがサーバー加入から **1週間** 経過しました。\n"
-            "下の **「⚖️ 判定する」** ボタンから、**メンバーへの昇格** または **BAN** を選んでください。"
-        )
         try:
             await forum.create_thread(
                 name=member.display_name[:100],
-                content=content,
                 embed=embed,
                 view=view,
-                allowed_mentions=discord.AllowedMentions(users=[member]),
+                allowed_mentions=discord.AllowedMentions.none(),
             )
         except (discord.Forbidden, discord.HTTPException) as e:
             logger.error(f"新人レビューの投稿に失敗しました ({member.id}): {e}")
