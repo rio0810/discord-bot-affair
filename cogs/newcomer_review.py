@@ -60,12 +60,6 @@ class NewcomerVerdictButton(
         await interaction.response.send_modal(NewcomerVerdictModal(self.uid))
 
 
-def make_review_view(uid: int) -> discord.ui.View:
-    view = discord.ui.View(timeout=None)
-    view.add_item(NewcomerVerdictButton(uid))
-    return view
-
-
 class NewcomerReview(commands.Cog, DatabaseBase):
     """新人ロール保持者が「サーバー加入から1週間」経過したら、保存済みプロフィールと
     一緒に指定フォーラムへ投稿し、メンバー昇格 / BAN を判定できるようにする。"""
@@ -260,29 +254,33 @@ class NewcomerReview(commands.Cog, DatabaseBase):
         ch = self.bot.get_channel(self.forum_id) if self.forum_id else None
         return ch if isinstance(ch, discord.ForumChannel) else None
 
-    def _review_embed(self, member: discord.Member) -> discord.Embed:
-        """レビュー投稿の内容を1つの embed にまとめる（案内文＋プロフィール）。"""
+    def _review_view(self, member: discord.Member) -> discord.ui.LayoutView:
+        """レビュー投稿を Components V2（Container + Separator の区切り線）で組む。"""
         stored = self._get_profile(member.id)
-        profile_text = ""
-        if stored:
-            profile_text = stored.get("description") or ""
-        else:
-            profile_text = "（プロフィールが保存されていません）"
+        profile_text = (stored.get("description") if stored else None) or "（プロフィールが保存されていません）"
+        joined = discord.utils.format_dt(member.joined_at, "D") if member.joined_at is not None else "不明"
 
-        embed = discord.Embed(
-            title="⏳ 新人審査",
-            description=(
-                f"{member.mention} さんがサーバー加入から **1週間** 経過しました。\n"
-                "下の **「⚖️ 判定する」** ボタンから、**メンバーへの昇格** または **BAN** を選んでください。"
-            ),
-            color=discord.Color.orange(),
-        )
-        embed.set_thumbnail(url=member.display_avatar.url)
-        embed.add_field(name="対象メンバー", value=member.mention, inline=True)
-        if member.joined_at is not None:
-            embed.add_field(name="加入日", value=discord.utils.format_dt(member.joined_at, "D"), inline=True)
-        embed.add_field(name="📋 プロフィール", value=profile_text[:1024] or "（なし）", inline=False)
-        return embed
+        large = discord.SeparatorSpacing.large
+        view = discord.ui.LayoutView(timeout=None)
+        container = discord.ui.Container(accent_colour=discord.Colour.orange())
+        container.add_item(discord.ui.TextDisplay("## ⏳ 新人審査"))
+        container.add_item(discord.ui.Separator(spacing=large))
+        container.add_item(discord.ui.TextDisplay(
+            f"{member.mention} さんがサーバー加入から **1週間** 経過しました。\n"
+            "下の **「⚖️ 判定する」** ボタンから、**メンバーへの昇格** または **BAN** を選んでください。"
+        ))
+        container.add_item(discord.ui.Separator(spacing=large))
+        container.add_item(discord.ui.TextDisplay(
+            f"**対象メンバー：**{member.mention}\n**加入日：**{joined}"
+        ))
+        container.add_item(discord.ui.Separator(spacing=large))
+        container.add_item(discord.ui.TextDisplay(f"### 📋 プロフィール\n{profile_text}"))
+        container.add_item(discord.ui.Separator(spacing=large))
+        row = discord.ui.ActionRow()
+        row.add_item(NewcomerVerdictButton(member.id))
+        container.add_item(row)
+        view.add_item(container)
+        return view
 
     async def _post_review(self, guild: discord.Guild, member: discord.Member):
         forum = self._forum()
@@ -290,13 +288,10 @@ class NewcomerReview(commands.Cog, DatabaseBase):
             logger.warning(f"新人レビューのフォーラム {self.forum_id} が見つかりません。")
             self._unclaim_review(member.id)  # フォーラム未設定なら次回に持ち越す
             return
-        embed = self._review_embed(member)
-        view = make_review_view(member.id)
         try:
             await forum.create_thread(
                 name=member.display_name[:100],
-                embed=embed,
-                view=view,
+                view=self._review_view(member),
                 allowed_mentions=discord.AllowedMentions.none(),
             )
         except (discord.Forbidden, discord.HTTPException) as e:
