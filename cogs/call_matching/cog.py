@@ -38,6 +38,8 @@ class CallMatchingCog(commands.Cog, CallDBMixin):
         self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID", "0"))
         # 新人ロール保持者は個通を利用できない（未設定なら制限なし）
         self.newcomer_role_id = int(os.getenv("NEWCOMER_ROLE_ID") or "0")
+        # 雑談ロール保持者も個通を利用できない（プロフ作成時にその旨を案内している）
+        self.zero_romance_role_id = int(os.getenv("ZERO_ROMANCE_ROLE_ID") or "0")
         self.category_id = int(os.getenv("CALL_CATEGORY_ID", "0"))
         # 通話マッチングのログ先（未設定ならログは送られない）
         self.log_channel_id = int(os.getenv("CALL_LOG_CHANNEL_ID", "0"))
@@ -172,14 +174,26 @@ class CallMatchingCog(commands.Cog, CallDBMixin):
     def _is_newcomer(self, member: discord.Member) -> bool:
         return bool(self.newcomer_role_id) and any(r.id == self.newcomer_role_id for r in member.roles)
 
+    def _is_zero_romance(self, member: discord.Member) -> bool:
+        return bool(self.zero_romance_role_id) and any(r.id == self.zero_romance_role_id for r in member.roles)
+
+    def _cannot_use_call(self, member: discord.Member) -> bool:
+        """新人ロール・雑談ロールの人は個通を利用できない。"""
+        return self._is_newcomer(member) or self._is_zero_romance(member)
+
     async def handle_recruit(self, interaction: discord.Interaction, trial: bool = False):
         guild = interaction.guild
         user = interaction.user
 
-        # 新人ロールの間は個通を利用できない
+        # 新人ロール・雑談ロールの間は個通を利用できない
         if self._is_newcomer(user):
             await interaction.response.send_message(
                 "❌ 新人ロールが付いている間は個通をご利用いただけません。", ephemeral=True
+            )
+            return
+        if self._is_zero_romance(user):
+            await interaction.response.send_message(
+                "❌ 雑談ロールの方は個通をご利用いただけません。", ephemeral=True
             )
             return
 
@@ -218,7 +232,7 @@ class CallMatchingCog(commands.Cog, CallDBMixin):
             m for m in guild.members
             if target_role in m.roles and not m.bot
             and m.id not in block_ids
-            and not self._is_newcomer(m)
+            and not self._cannot_use_call(m)
             and room_counts.get(m.id, 0) < personal_limits.get(m.id, self.default_max_rooms(m))
         ]
         if trial:
@@ -303,6 +317,11 @@ class CallMatchingCog(commands.Cog, CallDBMixin):
         # 新人ロールの間は個通を利用できない
         if self._is_newcomer(target) or self._is_newcomer(recruiter):
             await interaction.followup.send("❌ 新人ロールが付いている間は個通をご利用いただけません。")
+            await self._disable_dm_buttons(interaction)
+            return
+        # 雑談ロールの人は個通を利用できない
+        if self._is_zero_romance(target) or self._is_zero_romance(recruiter):
+            await interaction.followup.send("❌ 雑談ロールの方は個通をご利用いただけません。")
             await self._disable_dm_buttons(interaction)
             return
 
@@ -436,6 +455,12 @@ class CallMatchingCog(commands.Cog, CallDBMixin):
                 "❌ 新人ロールが付いている間は個通をご利用いただけません。", ephemeral=True
             )
             return
+        # 雑談ロールの人は個通（ブロック編集含む）を利用できない
+        if self._is_zero_romance(user):
+            await interaction.response.send_message(
+                "❌ 雑談ロールの方は個通をご利用いただけません。", ephemeral=True
+            )
+            return
 
         male_role = guild.get_role(self.male_role_id)
         female_role = guild.get_role(self.female_role_id)
@@ -457,8 +482,10 @@ class CallMatchingCog(commands.Cog, CallDBMixin):
         blocked = self.get_blocked_ids(user.id)
 
         # ブロック中を先頭に、その後は名前順。退出済みのブロック相手も解除できるように含める
+        # （雑談ロールの人は個通対象外なのでブロック候補にも出さない）
         members = sorted(
-            (m for m in guild.members if target_role in m.roles and not m.bot),
+            (m for m in guild.members
+             if target_role in m.roles and not m.bot and not self._is_zero_romance(m)),
             key=lambda m: (m.id not in blocked, m.display_name),
         )
         left_blocked = [uid for uid in sorted(blocked) if guild.get_member(uid) is None]

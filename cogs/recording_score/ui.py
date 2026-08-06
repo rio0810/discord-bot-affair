@@ -172,6 +172,44 @@ def make_score_view(submitter_id: int, kind: str = "m") -> discord.ui.View:
 
 
 # ---------------------------------------------------------------------- #
+# 音声投稿の提出確認（「この音声でいいか」を本人に確認してから審査へ回す）
+# ---------------------------------------------------------------------- #
+class AudioConfirmView(discord.ui.View):
+    """面接チャンネルに音声が投稿されたとき、本人に提出可否を確認するView。"""
+
+    def __init__(self, message: discord.Message, audio_attachments: list):
+        super().__init__(timeout=600)
+        self.message = message
+        self.audio_attachments = audio_attachments
+        self.submitter_id = message.author.id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.submitter_id:
+            await interaction.response.send_message(
+                "❌ この確認はご本人のみ操作できます。", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="提出する", style=discord.ButtonStyle.green, emoji="✅")
+    async def submit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        cog = interaction.client.get_cog("RecordingScore")
+        if cog is None:
+            await interaction.response.send_message("❌ 現在この機能は利用できません。", ephemeral=True)
+            return
+        await interaction.response.edit_message(content="✅ この音声で提出します。", view=None)
+        self.stop()
+        await cog.on_interview_audio(self.message, self.audio_attachments)
+
+    @discord.ui.button(label="やり直す", style=discord.ButtonStyle.gray, emoji="🔁")
+    async def redo(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(
+            content="🔁 提出をキャンセルしました。別の音声をこのチャンネルに投稿してください。", view=None
+        )
+        self.stop()
+
+
+# ---------------------------------------------------------------------- #
 # 合否判定（審査結果パネルのボタン → RadioGroup モーダル）
 # ---------------------------------------------------------------------- #
 class VerdictModal(discord.ui.Modal, title="合否判定"):

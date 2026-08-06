@@ -218,10 +218,10 @@ class InterviewRoomCog(commands.Cog):
         if not audio_attachments:
             return
 
-        # 採点はプロフィール作成と揃った時点で行う（RecordingScore が待ち合わせ）
+        # まず「この音声でいいか」を本人に確認してから審査へ回す（RecordingScore が処理）
         cog = self.bot.get_cog("RecordingScore")
         if cog is not None:
-            await cog.on_interview_audio(message, audio_attachments)
+            await cog.confirm_interview_audio(message, audio_attachments)
 
     def _is_interview_room(self, channel: discord.abc.GuildChannel) -> bool:
         return (

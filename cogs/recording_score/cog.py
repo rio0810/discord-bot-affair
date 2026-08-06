@@ -9,6 +9,7 @@ from .db import RecordingDBMixin
 from .embeds import profile_received_embed, recording_received_embed, submitted_embed
 from .ui import (
     PASS_THRESHOLD,
+    AudioConfirmView,
     ScoreButton,
     ScoreStatusButton,
     VerdictButton,
@@ -281,6 +282,21 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
         self._register_review(result, interaction.user.id, "f")
         try:
             await interaction.channel.send(embed=submitted_embed())
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    async def confirm_interview_audio(self, message: discord.Message, audio_attachments: list):
+        """面接チャンネルに録音が投稿されたとき、まず本人に提出確認を出す。
+        「提出する」を押されたら on_interview_audio へ進む。"""
+        # 既に審査へ回済みの人には確認も催促も出さない
+        if self._is_done(message.author.id):
+            return
+        try:
+            await message.reply(
+                "🎧 この音声を提出しますか？内容をご確認のうえ、下のボタンで選んでください。",
+                view=AudioConfirmView(message, audio_attachments),
+                mention_author=False,
+            )
         except (discord.Forbidden, discord.HTTPException):
             pass
 
