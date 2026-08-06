@@ -247,7 +247,7 @@ class CallPanelActions(discord.ui.ActionRow):
         super().__init__()
         self.cog = cog
 
-    @discord.ui.button(label="2人部屋申請", style=discord.ButtonStyle.green, emoji="📞", custom_id="persistent:call_recruit")
+    @discord.ui.button(label="個通部屋申請", style=discord.ButtonStyle.green, emoji="📞", custom_id="persistent:call_recruit")
     async def recruit(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.cog.handle_recruit(interaction)
 
