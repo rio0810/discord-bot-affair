@@ -610,7 +610,7 @@ class CallMatchingCog(commands.Cog, CallDBMixin):
                 f"（残り{TRIAL_WARNING_REMAINING}分で通知します）。"
             )
         embed = discord.Embed(
-            title=f"⏳ お試し個通部屋（{TRIAL_DURATION_MINUTES}分）" if trial else "📞 1対1通話部屋",
+            title=f"⏳ お試し個通部屋（{TRIAL_DURATION_MINUTES}分）" if trial else "📞 個通部屋",
             description=description,
             color=discord.Color.pink(),
         )
