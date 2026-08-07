@@ -335,6 +335,28 @@ class CallPanelView(discord.ui.LayoutView):
         self.add_item(container)
 
 
+class CallRoomCloseModal(discord.ui.Modal, title="個通部屋の削除"):
+    """削除前の確認モーダル（はい/いいえ を RadioGroup で選択）。"""
+
+    def __init__(self, cog: "CallMatchingCog"):
+        super().__init__()
+        self.cog = cog
+        self.confirm = discord.ui.RadioGroup(
+            options=[
+                discord.RadioGroupOption(label="はい（削除する）", value="yes", emoji="✅"),
+                discord.RadioGroupOption(label="いいえ（削除しない）", value="no", emoji="❌"),
+            ],
+            required=True,
+        )
+        self.add_item(discord.ui.Label(text="この個通部屋を削除しますか？", component=self.confirm))
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if self.confirm.value == "yes":
+            await self.cog.handle_close(interaction)
+        else:
+            await interaction.response.send_message("削除をキャンセルしました。", ephemeral=True)
+
+
 class CallRoomCloseView(discord.ui.View):
     def __init__(self, cog: "CallMatchingCog"):
         super().__init__(timeout=None)
@@ -342,4 +364,5 @@ class CallRoomCloseView(discord.ui.View):
 
     @discord.ui.button(label="個通部屋を削除する", style=discord.ButtonStyle.red, emoji="🚪", custom_id="persistent:call_close")
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.cog.handle_close(interaction)
+        # まず確認モーダルを出し、「はい」なら handle_close で削除する
+        await interaction.response.send_modal(CallRoomCloseModal(self.cog))
