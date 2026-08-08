@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 REMIND_AFTER = timedelta(hours=12)
 # 提出から強制的に結果を出すまでの経過時間（案内する24時間期限の3時間前）
 FORCE_AFTER = timedelta(hours=21)
+# 未提出者の自動BANで対象にする参加からの最大経過時間。
+# これより古いメンバーは対象外にして、機能を有効化した直後の一括BAN事故を防ぐ。
+UNSUBMITTED_MAX_AGE = timedelta(days=7)
 
 
 class RecordingScore(commands.Cog, RecordingDBMixin):
@@ -55,6 +58,8 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
         self.zero_romance_profile_channel_id = int(os.getenv("ZERO_ROMANCE_PROFILE_CHANNEL_ID") or "0")
         # 合格案内で確認してもらうガイドラインチャンネル
         self.guideline_channel_id = int(os.getenv("GUIDELINE_CHANNEL_ID") or "0")
+        # 審査未提出のまま参加から一定時間が経ったメンバーの自動BAN（未設定・0なら無効）
+        self.unsubmitted_ban_hours = float(os.getenv("UNSUBMITTED_BAN_HOURS") or "0")
 
     async def cog_load(self):
         self._ensure_tables()
@@ -62,9 +67,12 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
         self.bot.add_dynamic_items(ScoreStatusButton)
         self.bot.add_dynamic_items(VerdictButton)
         self.review_deadline_loop.start()
+        if self.unsubmitted_ban_hours > 0 and self.review_role_id:
+            self.unsubmitted_ban_loop.start()
 
     async def cog_unload(self):
         self.review_deadline_loop.cancel()
+        self.unsubmitted_ban_loop.cancel()
 
     def is_admin(self, member: discord.Member) -> bool:
         if getattr(member, "guild_permissions", None) and member.guild_permissions.administrator:
@@ -282,6 +290,7 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
             fch, interaction.user, [], embed=embed, source_channel=interaction.channel, kind="f",
         )
         self._register_review(result, interaction.user.id, "f")
+        self._mark_done(interaction.user.id)
         try:
             await interaction.channel.send(embed=submitted_embed())
         except (discord.Forbidden, discord.HTTPException):
@@ -559,6 +568,50 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
             await channel.send(view=view, allowed_mentions=allowed)
         except (discord.Forbidden, discord.HTTPException) as e:
             logger.error(f"採点結果の送信に失敗しました: {e}")
+
+    # ------------------------------------------------------------------ #
+    # 未提出者の自動BAN
+    # ------------------------------------------------------------------ #
+    @tasks.loop(minutes=10)
+    async def unsubmitted_ban_loop(self):
+        """審査ロールを持ったまま、参加から規定時間が過ぎても未提出のメンバーをBANする。"""
+        deadline = timedelta(hours=self.unsubmitted_ban_hours)
+        now = datetime.now(timezone.utc)
+        for guild in self.bot.guilds:
+            role = guild.get_role(self.review_role_id)
+            if role is None:
+                continue
+            for member in list(role.members):
+                if member.bot or member.joined_at is None:
+                    continue
+                age = now - member.joined_at
+                # 期限前、または古すぎるメンバー（機能有効化前からの滞留）は対象外
+                if age < deadline or age > UNSUBMITTED_MAX_AGE:
+                    continue
+                if self.is_admin(member) or self.is_reviewer(member.id):
+                    continue
+                if self._has_submitted(member.id):
+                    continue
+                await self._ban_unsubmitted(member, age)
+
+    @unsubmitted_ban_loop.before_loop
+    async def before_unsubmitted_ban_loop(self):
+        await self.bot.wait_until_ready()
+
+    async def _ban_unsubmitted(self, member: discord.Member, age: timedelta):
+        hours = self.unsubmitted_ban_hours
+        try:
+            await member.ban(
+                reason=f"審査未提出のまま参加から{hours:g}時間経過（自動BAN）",
+                delete_message_seconds=0,
+            )
+        except (discord.Forbidden, discord.HTTPException) as e:
+            logger.error(f"未提出者の自動BANに失敗しました ({member.id}): {e}")
+            return
+        logger.info(
+            f"審査未提出のため自動BANしました: {member} ({member.id})"
+            f" / 参加から {age.total_seconds() / 3600:.1f} 時間"
+        )
 
 
 async def setup(bot: commands.Bot):

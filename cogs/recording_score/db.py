@@ -221,6 +221,23 @@ class RecordingDBMixin(DatabaseBase):
             logger.error(f"プロフィール作成フラグの取得に失敗しました: {e}")
             return False
 
+    def _has_submitted(self, user_id: int) -> bool:
+        """審査に提出済みか（提出済みフラグ・審査中・判定済みのいずれか）。
+        DB失敗時は True（＝未提出とみなさない）でフェイルセーフにする。"""
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT 1 WHERE EXISTS (SELECT 1 FROM interview_done WHERE user_id = %s) "
+                        "OR EXISTS (SELECT 1 FROM interview_reviews WHERE submitter_id = %s) "
+                        "OR EXISTS (SELECT 1 FROM interview_verdicts WHERE submitter_id = %s)",
+                        (user_id, user_id, user_id),
+                    )
+                    return cur.fetchone() is not None
+        except Exception as e:
+            logger.error(f"審査提出状況の取得に失敗しました: {e}")
+            return True
+
     def _pop_pending(self, user_id: int):
         try:
             with self.get_db() as conn:

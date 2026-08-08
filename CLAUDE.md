@@ -46,6 +46,7 @@ Copy `.env.example` to `.env` and fill in:
 | `MALE_PROFILE_CHANNEL_ID` / `FEMALE_PROFILE_CHANNEL_ID` | On 合格, the bot posts in the member's personal interview/profile channel (no DM fallback — skipped if the channel is missing) directing them to write their profile in the gender-matching channel here (male via `MALE_ROLE_ID`, female via `FEMALE_ROLE_ID`) |
 | `ZERO_ROMANCE_PROFILE_CHANNEL_ID` | On 合格, members holding `ZERO_ROMANCE_ROLE_ID` (雑談) are directed here instead of the gender channel — the 雑談-user-only profile channel (optional; takes priority over the gender-based channels) |
 | `GUIDELINE_CHANNEL_ID` | Guideline channel linked in the 合格 message so the member checks the server info (optional) |
+| `UNSUBMITTED_BAN_HOURS` | Hours after **joining** that a member still holding `REVIEW_ROLE_ID` (falls back to `WAITING_ROLE_ID`) and with no 審査 submission is auto-banned (`recording_score.py`'s `unsubmitted_ban_loop`, every 10 min). Unset/0 disables the feature. Members who joined more than 7 days ago (`UNSUBMITTED_MAX_AGE`), admins, and registered reviewers are never targeted |
 | `CALL_CATEGORY_ID` | Category ID for created call rooms (optional) |
 | `CALL_LOG_CHANNEL_ID` | Channel ID for call-matching accept/decline logs (no logging if unset) |
 | `MAX_ROOMS_PER_FEMALE` / `MAX_ROOMS_PER_MALE` | Max concurrent call rooms per user (default 2) |
@@ -85,6 +86,7 @@ commands.Cog + DatabaseBase (core/db_base.py)
 - `vc_rank.py` — tracks VC time every 1 min and updates users' rank
 - `temp_vc.py` — join-to-create temp VCs; sweeps empty temp VCs every 5 min (`temp_vcs` table); rename panel in the VC's text chat
 - `recording_score.py` — `review_deadline_loop` every 10 min: mentions unscored reviewers at 12h and force-finalizes the review at 21h (`interview_reviews` table)
+- `recording_score.py` — `unsubmitted_ban_loop` every 10 min (only when `UNSUBMITTED_BAN_HOURS` > 0): bans members who still hold the review/waiting role and haven't submitted (`_has_submitted`: `interview_done` / `interview_reviews` / `interview_verdicts`) `UNSUBMITTED_BAN_HOURS` after `joined_at`. No warning DM and no Discord notification — console logging only
 - `newcomer_review.py` — `review_loop` hourly: when a `NEWCOMER_ROLE_ID` holder has been in the server ≥7 days (`joined_at`), posts a thread to `NEWCOMER_REVIEW_FORUM_ID` with their saved profile embed (`member_profiles`, stored by the profile wizard) + メンバー化/BAN buttons (anyone can press). Dedup via `newcomer_reviews`; double-verdict guard via `newcomer_verdicts`. Approval removes `NEWCOMER_ROLE_ID` and adds `MEMBER_ROLE_ID`
 
 ## Slash Commands Reference
