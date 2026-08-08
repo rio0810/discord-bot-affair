@@ -357,7 +357,8 @@ class NewcomerReview(commands.Cog, DatabaseBase):
             dm_sent = await self._send_promotion_dm(member)
             note = "" if dm_sent else "\n（※本人へのDM送信はできませんでした）"
             await interaction.followup.send(
-                f"✅ {member.mention} を **メンバー** にしました。（新人ロール解除・メンバーロール付与）{note}"
+                f"✅ {member.mention} を **メンバー** にしました。（新人ロール解除・メンバーロール付与）{note}\n"
+                f"**判定者：**{interaction.user.mention}"
             )
         else:  # ban
             try:
@@ -375,7 +376,10 @@ class NewcomerReview(commands.Cog, DatabaseBase):
                 self._unclaim_verdict(uid)
                 await interaction.followup.send(f"❌ BANに失敗しました：{e}", ephemeral=True)
                 return
-            await interaction.followup.send(f"🔨 <@{uid}> を **BAN** しました。")
+            await interaction.followup.send(
+                f"🔨 <@{uid}> を **BAN** しました。\n"
+                f"**判定者：**{interaction.user.mention}"
+            )
 
 
 async def setup(bot: commands.Bot):

@@ -167,7 +167,8 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
             # 合格者本人のチャンネルへ、性別ごとのプロフィールチャンネルへの案内を送る
             await self._notify_profile_channel(guild, member)
             await interaction.response.send_message(
-                f"✅ {member.mention} を **合格** にしました。（審査ロール解除・新人ロール付与）"
+                f"✅ {member.mention} を **合格** にしました。（審査ロール解除・新人ロール付与）\n"
+                f"**判定者：**{interaction.user.mention}"
             )
         else:  # fail → BAN
             try:
@@ -186,7 +187,8 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
                 await interaction.response.send_message(f"❌ BANに失敗しました：{e}", ephemeral=True)
                 return
             await interaction.response.send_message(
-                f"🔨 <@{submitter_id}> を **不合格** としてBANしました。"
+                f"🔨 <@{submitter_id}> を **不合格** としてBANしました。\n"
+                f"**判定者：**{interaction.user.mention}"
             )
 
     async def _notify_profile_channel(self, guild: discord.Guild, member: discord.Member):
