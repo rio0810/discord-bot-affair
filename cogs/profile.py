@@ -132,6 +132,28 @@ class VoiceProfile(commands.Cog):
         else:
             self._profile_cache.pop(uid, None)
 
+    async def _fetch_fresh(self, msg: discord.Message) -> discord.Message | None:
+        """キャッシュしたプロフィールメッセージを取り直す。
+        Message は取得時点のスナップショットなので、そのまま使うと
+        本人が編集した内容（更新後のプロフィール）が反映されない。
+        削除されていたら None、一時的に取れなければ手元のものを返す。"""
+        try:
+            return await msg.channel.fetch_message(msg.id)
+        except discord.NotFound:
+            return None
+        except (discord.Forbidden, discord.HTTPException) as e:
+            logger.warning(f"プロフィールの再取得に失敗しました（{msg.id}）: {e}")
+            return msg
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        """プロフィールが編集されたらキャッシュを最新の内容に差し替える。"""
+        if after.channel.id not in self.profile_target_channel_ids:
+            return
+        cached = self._profile_cache.get(after.author.id)
+        if cached is not None and cached.id == after.id:
+            self._profile_cache[after.author.id] = after
+
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
         if member.bot or before.channel == after.channel:
@@ -149,12 +171,18 @@ class VoiceProfile(commands.Cog):
         latest_message = self._profile_cache.get(member.id)
         if not latest_message:
             return
+        # 貼る直前に取り直して、編集された最新のプロフィールを表示する
+        latest_message = await self._fetch_fresh(latest_message)
+        if latest_message is None:
+            self._profile_cache.pop(member.id, None)
+            return
+        self._profile_cache[member.id] = latest_message
 
         embed = discord.Embed(
             title=f"{member.display_name} さんのプロフィール",
             description=latest_message.content or "（本文なし）",
             color=discord.Color.blue(),
-            timestamp=latest_message.created_at,
+            timestamp=latest_message.edited_at or latest_message.created_at,
         )
         embed.set_author(
             name=f"{member.display_name} (@{member.name})",

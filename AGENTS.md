@@ -1,0 +1,106 @@
+# AGENTS.md
+
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+
+## Running the Bot
+
+**With Docker (recommended):**
+```bash
+docker compose up -d
+```
+
+**Locally:**
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+No test suite or linter is configured.
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in:
+
+| Variable | Description |
+|---|---|
+| `TOKEN` | Discord bot token |
+| `MY_GUILD` | Target guild ID for slash command sync |
+| `PROFILE_TARGET_CHANNEL_IDS` | Comma-separated channel IDs for auto profile display |
+| `ZERO_ROMANCE_ROLE_ID` | 雑談 role auto-granted when a user picks 恋愛の割合「0割」 in the profile wizard (optional). Mutually exclusive with `ROMANCE_ROLE_ID` |
+| `ROMANCE_ROLE_ID` | 恋愛 role auto-granted when a user picks 恋愛の割合「1割以上」 (optional). Mutually exclusive with `ZERO_ROMANCE_ROLE_ID` |
+| `ZERO_ROMANCE_HIDDEN_CATEGORY_ID` | Category hidden (role-level `view_channel=False` overwrite) from `ZERO_ROMANCE_ROLE_ID` holders; set when the role is first granted (optional) |
+| `DM_OPEN_ROLE_ID` / `DM_CLOSED_ROLE_ID` / `DM_ACQUAINTED_ROLE_ID` / `DM_ASK_ROLE_ID` | Roles auto-granted (mutually exclusive) from the profile wizard's 「DM・フレンド申請の可否」 select — 誰でもOK / DM× / 話したことあるなら / 直接聞いてもらってから respectively. Common to both 雑談 and 恋愛 profiles (optional) |
+| `ADMIN_ROLE_ID` | Role ID that can use admin commands |
+| `ERROR_LOG_CHANNEL_ID` | Text channel that `ERROR`+ logs are streamed to (via `core/log_to_discord.py`'s logging handler). Console/Railway logging still works regardless; no Discord streaming if unset (optional) |
+| `EXCLUDED_CHANNEL_IDS` | Comma-separated VC IDs excluded from VC-time tracking |
+| `VC_RANK_REDUCED_CATEGORY_IDS` | Comma-separated category IDs where VC time accrues at 1/3 rate (fractional carry) |
+| `INTERVIEW_ROOM_CATEGORY_ID` | Category ID under which per-member interview rooms are created (optional) |
+| `RECORDING_FORWARD_CHANNEL_ID` | Text channel recordings/審査 are forwarded to (no forwarding if unset) |
+| `RECORDING_FORUM_MALE_ID` / `RECORDING_FORUM_FEMALE_ID` | Per-gender 審査 forums (posts as a new thread titled with the submitter's name). Male reviews go to MALE, female to FEMALE; falls back to the `RECORDING_FORWARD_CHANNEL_ID` text channel |
+| `MALE_ROLE_ID` / `FEMALE_ROLE_ID` | Role IDs for the 1-on-1 call matching feature |
+| `NEWCOMER_ROLE_ID` | Members with this role can't use call matching (blocked from recruiting, hidden from target lists, and can't accept). Also the target of the 1-week newcomer review (`newcomer_review.py`). Optional |
+| `MEMBER_ROLE_ID` | Role granted (and `NEWCOMER_ROLE_ID` removed) when a newcomer is approved in the 1-week review (`newcomer_review.py`) |
+| `NEWCOMER_REVIEW_FORUM_ID` | Forum where the 1-week newcomer review is posted (a thread per member, titled with their name, carrying their saved profile + メンバー化/BAN buttons). No review runs if unset |
+| `WAITING_ROLE_ID` / `WAITING_CATEGORY_ID` | `waiting_room.py`: auto-assigns the waiting role on join; hides every category except `WAITING_CATEGORY_ID` (visible category is view-only, no send); removed when the role is taken away |
+| `REVIEW_ROLE_ID` | Role removed on 合格 verdict (defaults to `WAITING_ROLE_ID` if unset). On 合格 the reviewer removes it and adds `NEWCOMER_ROLE_ID`; on 不合格 the user is banned. Verdict button lives on the 審査結果 panel |
+| `MALE_PROFILE_CHANNEL_ID` / `FEMALE_PROFILE_CHANNEL_ID` | On 合格, the bot posts in the member's personal interview/profile channel (no DM fallback — skipped if the channel is missing) directing them to write their profile in the gender-matching channel here (male via `MALE_ROLE_ID`, female via `FEMALE_ROLE_ID`) |
+| `ZERO_ROMANCE_PROFILE_CHANNEL_ID` | On 合格, members holding `ZERO_ROMANCE_ROLE_ID` (雑談) are directed here instead of the gender channel — the 雑談-user-only profile channel (optional; takes priority over the gender-based channels) |
+| `GUIDELINE_CHANNEL_ID` | Guideline channel linked in the 合格 message so the member checks the server info (optional) |
+| `UNSUBMITTED_BAN_HOURS` | Hours after **joining** that a member still holding `REVIEW_ROLE_ID` (falls back to `WAITING_ROLE_ID`) and with no 審査 submission is auto-banned (`recording_score.py`'s `unsubmitted_ban_loop`, every 10 min). Unset/0 disables the feature. Members who joined more than 7 days ago (`UNSUBMITTED_MAX_AGE`), admins, and registered reviewers are never targeted |
+| `CALL_CATEGORY_ID` | Category ID for created call rooms (optional) |
+| `CALL_LOG_CHANNEL_ID` | Channel ID for call-matching accept/decline logs (no logging if unset) |
+| `MAX_ROOMS_PER_FEMALE` / `MAX_ROOMS_PER_MALE` | Max concurrent call rooms per user (default 2) |
+| `TRIAL_WARNING_SOUND` | Soundboard sound (ID or name) played in the trial-call VC at the 5-min-remaining warning; bot briefly joins the VC to send it (needs PyNaCl). No sound if unset |
+| `LOBBY_VC_ID` | Trigger VC(s) for the join-to-create temp-VC feature (`temp_vc.py`), comma-separated for multiple. Joining one makes a personal VC. Disabled if unset |
+| `TEMP_VC_CATEGORY_ID` | Category for created temp VCs (defaults to the trigger VC's category) |
+
+## Architecture
+
+**Entry point:** `main.py` — creates the bot, recursively loads all cogs from `cogs/`, syncs slash commands globally and to `MY_GUILD`, then starts `server.py` (FastAPI health check on port 8080) in a background thread. `setup_hook` also calls `setup_logging(self)` (`core/log_to_discord.py`) and `bot.run(..., log_handler=None)` so the app's own logging config wins.
+
+**Logging:** Use `logging` (module-level `logger = logging.getLogger(__name__)`), not `print`. `core/log_to_discord.py` adds a console handler (Railway logs) to the root logger, plus — when `ERROR_LOG_CHANNEL_ID` is set — a `DiscordLogHandler` that streams `ERROR`+ records to that channel. The handler queues records and flushes them on the bot loop (batched, failure-swallowing) to avoid rate-limit/recursion loops.
+
+**Cog loading:** `main.py` loads each top-level `cogs/*.py` file and each `cogs/<feature>/` package (a directory with `__init__.py`). Package submodules are **not** loaded directly — only the package's `__init__.py` (which must expose `setup`). So helper modules can live inside a package without needing their own `setup`. Small features can be a single `cogs/foo.py`; larger ones are packages.
+
+**Package layout for large cogs:** `call_matching`, `recording_score`, and `mp_shop` are packages split as `__init__.py` (re-exports `setup`) · `cog.py` (the `commands.Cog`) · `ui.py` (Views/Modals/Buttons) · `db.py` (a `DatabaseBase` mixin, e.g. `CallDBMixin`, that the cog inherits) · sometimes `constants.py`/`embeds.py`. UI classes reference the cog at runtime via `interaction.client.get_cog(...)` (or a stored `self.cog`) and only type-hint it under `TYPE_CHECKING`, so there's no import cycle. The profile wizard is `ui/profile_wizard/` (`data.py` choices+builders · `roles.py` role-granting · `views.py` Views/Modals · `__init__.py` re-exports the public API like `ProfileStartView`/`RoomPanelView`).
+
+**Inheritance chain for DB-backed cogs:**
+```
+commands.Cog + DatabaseBase (core/db_base.py)
+    └── AdminCogBase (core/admin_base.py)
+```
+
+`DatabaseBase` owns the PostgreSQL connection and provides `get_db()`. All cogs that touch the DB extend it. `AdminCogBase` adds the `ADMIN_ROLE_ID` constant for admin-gated cogs.
+
+**Database:** PostgreSQL (service name `db` in Docker). Schema in `init.sql`:
+- `users(user_id, vc_minutes_total, rank)`
+- `trial_invites(recruiter_id, target_id, invited_at)` — one-shot trial-call invite history (also auto-created at cog load)
+- `call_blocks(blocker_id, blocked_id, created_at)` — call-matching blocks, hides both users from each other's target list (also auto-created at cog load)
+- `call_room_limits(user_id, max_rooms)` — per-user room-cap override set via the panel's 1-room-limit toggle button (also auto-created at cog load)
+
+**DB credentials** are hardcoded in `core/db_base.py` (host=`db`, user=`user`, pass=`password`, db=`postgres_db`, sslmode=`require`). These match the `compose.yml` service.
+
+**UI components** (`ui/`) are Discord `View` subclasses with persistent buttons (custom_id prefixed `persistent:`) so they survive bot restarts.
+
+**Key background tasks (discord.py `@tasks.loop`):**
+- `vc_rank.py` — tracks VC time every 1 min and updates users' rank
+- `temp_vc.py` — join-to-create temp VCs; sweeps empty temp VCs every 5 min (`temp_vcs` table); rename panel in the VC's text chat
+- `recording_score.py` — `review_deadline_loop` every 10 min: mentions unscored reviewers at 12h and force-finalizes the review at 21h (`interview_reviews` table)
+- `recording_score.py` — `unsubmitted_ban_loop` every 10 min (only when `UNSUBMITTED_BAN_HOURS` > 0): bans members who still hold the review/waiting role and haven't submitted (`_has_submitted`: `interview_done` / `interview_reviews` / `interview_verdicts`) `UNSUBMITTED_BAN_HOURS` after `joined_at`. No warning DM and no Discord notification — console logging only
+- `newcomer_review.py` — `review_loop` hourly: when a `NEWCOMER_ROLE_ID` holder has been in the server ≥7 days (`joined_at`), posts a thread to `NEWCOMER_REVIEW_FORUM_ID` with their saved profile embed (`member_profiles`, stored by the profile wizard) + メンバー化/BAN buttons (anyone can press). Dedup via `newcomer_reviews`; double-verdict guard via `newcomer_verdicts`. Approval removes `NEWCOMER_ROLE_ID` and adds `MEMBER_ROLE_ID`
+
+## Slash Commands Reference
+
+| Command | Cog | Description |
+|---|---|---|
+| `/topic` | `talk.py` | Random discussion topic |
+| `/rank` | `vc_rank.py` | Show VC/text rank card (Pillow image) |
+| `/set_appeal_panel` | `interview_room.py` | Admin: place an A/B panel — A creates a per-user appeal-recording channel (audio forwarded to `RECORDING_FORWARD_CHANNEL_ID`), B creates a per-user profile channel. Males submit a recording by posting audio (file or Discord voice message) in their interview channel; the 採点 review is forwarded to `RECORDING_FORWARD_CHANNEL_ID` only once BOTH the audio and the profile exist (order-independent; `recording_score.py` waits via the `pending_interview` table). Only members registered as reviewers (`interview_reviewers` table, managed via `/reviewer_add`·`/reviewer_remove`·`/reviewer_list`) can score; they rate 4 categories (0–2 each) via a RadioGroup modal, and once the number of scores reaches the registered reviewer count the average is posted mentioning `ADMIN_ROLE_ID` (`recording_scores`/`recording_results` tables). No result is posted while zero reviewers are registered. Each forwarded review is tracked in `interview_reviews` (with `created_at`); a 10-min `tasks.loop` (`review_deadline_loop`) mentions still-unscored reviewers 12h after submission and force-finalizes the result 21h after submission (3h before the announced 24h deadline). The 採点 message also carries a 採点状況 button showing which registered reviewers have/haven't scored that submission. Both channels get a "プロフィールを作成する" button that runs a profile wizard (`ui/profile_wizard/`): modal for name/hobby/type + sequential ephemeral steps — selects (>25 options auto-split) plus two modals of 4 `RadioGroup`s each (血液型/結婚/出会い/同居人, 休日/酒/タバコ/恋愛距離). A 「DM・フレンド申請の基準」 select is asked in both 雑談 and 恋愛 flows and auto-grants the matching `DM_OPEN`/`DM_CLOSED`/`DM_ACQUAINTED` role. Posts the result as an embed |
+| `/set_call_panel` | `call_matching.py` | Admin: place a 1-on-1 call recruit panel — male↔female pick each other via paged select + modal message, the target accepts/declines via DM buttons; accept creates a private VC + text room, declining auto-registers a block (decliner → recruiter), both outcomes logged to `CALL_LOG_CHANNEL_ID` (no logging if unset). Also has a trial-call button: same flow but the room auto-closes after 30 min (warning mention at 5 min remaining, checked by a 1-min `tasks.loop` against channel `created_at`), and each recruiter can trial-invite a given member only once ever (`trial_invites` table). Panel also has a block-edit button (`call_blocks` table) opening a `CheckboxGroup` modal (blocked members pre-checked, check/uncheck to block/unblock, capped at 50 candidates); blocked pairs are hidden from each other's target list both ways. A room-limit toggle button (`call_room_limits` table) lets a user cap their own concurrent rooms at 1 (press again to restore the role default); members at their room cap are hidden from target lists |
+| `/reviewer_add` `/reviewer_remove` `/reviewer_list` | `recording_score.py` | Admin: register/remove/list the members who score profile reviews (`interview_reviewers` table). The required reviewer count equals the number of registered reviewers |
+| `/admin_block_list` | `call_matching.py` | Admin: list all call-matching blocks (blocker → blocked), optional member filter |
+| `/newcomer_list` | `call_matching.py` | Admin: list members who have `NEWCOMER_ROLE_ID` |
+| `/set_mp_panel` | `mp_shop` | Admin: place an MP-ticket panel — check balance button + redeem select (お試し個通リセット → clears the user's `trial_invites`; 個人専用テキストチャット作成 → modal for name + viewer-role checkboxes limited to `MALE_ROLE_ID`/`FEMALE_ROLE_ID`; ロール作成 → modal for name + hex color, creates the role at the bottom and assigns it; カラーロール作成 (`COLOR_ROLE_COST`, 15) → modal for name + style RadioGroup (グラデーション/ホログラフィック); creates a role with `secondary_color`/`tertiary_color` — gradient uses a gender-based base (male=blue, female=red via `MALE_ROLE_ID`/`FEMALE_ROLE_ID`), holographic uses Discord's fixed 3-color preset; requires the server's boost-gated enhanced role colors (refunds on failure); 雰囲気写真の閲覧権 (`MOOD_PHOTO_ROLE_ID`) with a 24h image-post deadline enforced by a loop; サーバー絵文字追加 → modal for name + image `FileUpload`, creates a guild custom emoji). Costs live in `cogs/mp_shop/constants.py`. Tickets are the `users.mp_tickets` column granted on VC level-up |
+| `/mp_give` `/mp_take` | `mp_shop.py` | Admin: grant/confiscate a member's MP tickets (logged to `MP_LOG_CHANNEL_ID` if set) |
+| `/mp_list` | `mp_shop.py` | Admin: list members' MP ticket holdings (desc) |
+| `/set_role_panel` | `role_switch.py` | Admin: place a panel with 雑談/恋愛 buttons; members self-switch between `ZERO_ROMANCE_ROLE_ID` and `ROMANCE_ROLE_ID` (mutually exclusive; 雑談 hides the configured category). Switching has a 2-week cooldown per user (`role_switch_cooldowns` table); profile-creation role assignment is exempt |
