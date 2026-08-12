@@ -82,6 +82,33 @@ class EmojiModal(discord.ui.Modal, title="サーバー絵文字を追加"):
         await self.cog.redeem_emoji(interaction, str(self.emoji_name), attachment)
 
 
+class EmojiPreviewView(discord.ui.View):
+    """追加直後の絵文字を確認し、気に入らなければ取り消して返金するビュー。"""
+
+    def __init__(self, cog: "MPShop", emoji: discord.Emoji, user_id: int, timeout: float = 60.0):
+        super().__init__(timeout=timeout)
+        self.cog = cog
+        self.emoji_obj = emoji
+        self.user_id = user_id
+        self.message: discord.Message | None = None
+
+    async def on_timeout(self):
+        if self.message is None:
+            return
+        try:
+            await self.message.edit(view=None)
+        except (discord.NotFound, discord.HTTPException):
+            pass
+
+    @discord.ui.button(label="取り消す（削除して返金）", emoji="🗑️", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ この操作はできません。", ephemeral=True)
+            return
+        await self.cog.cancel_emoji(interaction, self.emoji_obj)
+        self.stop()
+
+
 class MPShopView(discord.ui.View):
     """MPチケットの確認・交換パネル（永続ビュー）。"""
 

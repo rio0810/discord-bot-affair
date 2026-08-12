@@ -22,7 +22,7 @@ from .constants import (
     TRIAL_RESET_COST,
 )
 from .db import MPShopDBMixin
-from .ui import ColorRoleModal, EmojiModal, MPShopView, TextChannelModal
+from .ui import ColorRoleModal, EmojiModal, EmojiPreviewView, MPShopView, TextChannelModal
 
 logger = logging.getLogger(__name__)
 
@@ -295,8 +295,33 @@ class MPShop(commands.Cog, MPShopDBMixin):
                 ephemeral=True,
             )
             return
+        # テキスト中の見え方（小）と単体の見え方（大）を確認できるようにする。
+        # 絵文字だけのメッセージは Discord 側で大きく表示されるため、2通に分けて送る。
         await interaction.followup.send(
-            f"✅ 絵文字 {emoji} を追加しました！（-{EMOJI_COST}枚）", ephemeral=True
+            f"✅ 絵文字 {emoji} を追加しました！（-{EMOJI_COST}枚）\n"
+            f"**テキスト中：** おはよう {emoji} また明日 {emoji}\n"
+            "**単体（大きい表示）：** ↓",
+            ephemeral=True,
+        )
+        view = EmojiPreviewView(self, emoji, interaction.user.id)
+        view.message = await interaction.followup.send(str(emoji), view=view, ephemeral=True, wait=True)
+
+    async def cancel_emoji(self, interaction: discord.Interaction, emoji: discord.Emoji):
+        """プレビューを見て取り消した場合：絵文字を削除してチケットを返金する。"""
+        await interaction.response.defer()
+        try:
+            await emoji.delete(reason=f"MPチケット交換：{interaction.user} が絵文字の追加を取り消し")
+        except discord.NotFound:
+            pass
+        except (discord.Forbidden, discord.HTTPException) as e:
+            logger.error(f"絵文字の削除に失敗しました: {e}")
+            await interaction.followup.send(
+                "❌ 絵文字の削除に失敗しました。管理者にご連絡ください。", ephemeral=True
+            )
+            return
+        self._refund(interaction.user.id, EMOJI_COST)
+        await interaction.edit_original_response(
+            content=f"🗑️ 絵文字を削除し、チケット{EMOJI_COST}枚を返金しました。", view=None
         )
 
     async def _redeem_mood_photo(self, interaction: discord.Interaction):

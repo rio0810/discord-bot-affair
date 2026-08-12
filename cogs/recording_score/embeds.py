@@ -26,6 +26,15 @@ def profile_received_embed() -> discord.Embed:
     )
 
 
+def submit_canceled_embed() -> discord.Embed:
+    """提出確認で「やり直す」を押されたとき。"""
+    return discord.Embed(
+        title="🔁 提出をキャンセルしました",
+        description="別の音声をこのチャンネルに投稿してください。",
+        color=discord.Color.orange(),
+    )
+
+
 def recording_received_embed() -> discord.Embed:
     """録音は受け付けたが、まだプロフィール未作成のとき（男性）。"""
     return discord.Embed(

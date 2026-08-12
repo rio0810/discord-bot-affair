@@ -1,6 +1,8 @@
 import logging
 import discord
 
+from .embeds import submit_canceled_embed
+
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +206,7 @@ class AudioConfirmView(discord.ui.View):
     @discord.ui.button(label="やり直す", style=discord.ButtonStyle.gray, emoji="🔁")
     async def redo(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(
-            content="🔁 提出をキャンセルしました。別の音声をこのチャンネルに投稿してください。", view=None
+            content=None, embed=submit_canceled_embed(), view=None
         )
         self.stop()
 
