@@ -32,6 +32,7 @@ Copy `.env.example` to `.env` and fill in:
 | `DM_OPEN_ROLE_ID` / `DM_CLOSED_ROLE_ID` / `DM_ACQUAINTED_ROLE_ID` / `DM_ASK_ROLE_ID` | Roles auto-granted (mutually exclusive) from the profile wizard's 「DM・フレンド申請の可否」 select — 誰でもOK / DM× / 話したことあるなら / 直接聞いてもらってから respectively. Common to both 雑談 and 恋愛 profiles (optional) |
 | `ADMIN_ROLE_ID` | Role ID that can use admin commands |
 | `ERROR_LOG_CHANNEL_ID` | Text channel that `ERROR`+ logs are streamed to (via `core/log_to_discord.py`'s logging handler). Console/Railway logging still works regardless; no Discord streaming if unset (optional) |
+| `JOIN_LEAVE_LOG_CHANNEL_ID` | Channel where server join/leave logs are posted as embeds (`cogs/join_leave_log.py`; 入室=green, 退室=red). Defaults to `1530463807418273913` if unset |
 | `EXCLUDED_CHANNEL_IDS` | Comma-separated VC IDs excluded from VC-time tracking |
 | `VC_RANK_REDUCED_CATEGORY_IDS` | Comma-separated category IDs where VC time accrues at 1/3 rate (fractional carry) |
 | `INTERVIEW_ROOM_CATEGORY_ID` | Category ID under which per-member interview rooms are created (optional) |
