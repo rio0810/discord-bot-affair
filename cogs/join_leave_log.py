@@ -36,41 +36,36 @@ class JoinLeaveLog(commands.Cog):
         except (discord.Forbidden, discord.HTTPException) as e:
             logger.error(f"入退室ログの送信に失敗しました: {e}")
 
-    def _base_embed(self, member: discord.Member, title: str, color: discord.Color):
-        embed = discord.Embed(
-            title=title,
-            description=f"{member.mention}（{member}）",
-            color=color,
-            timestamp=discord.utils.utcnow(),
-        )
-        embed.set_thumbnail(url=member.display_avatar.url)
-        embed.add_field(name="ユーザーID", value=str(member.id), inline=False)
-        embed.add_field(
-            name="アカウント作成日",
-            value=discord.utils.format_dt(member.created_at, "F"),
-            inline=False,
-        )
-        embed.set_footer(text=f"現在のメンバー数: {member.guild.member_count}")
-        return embed
-
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         if member.bot:
             return
-        embed = self._base_embed(member, "🟢 サーバーに参加しました", discord.Color.green())
+        embed = discord.Embed(
+            description=f"{member.mention} がサーバーに参加しました",
+            color=discord.Color.green(),
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.add_field(
+            name="⏲ アカウントの年齢:",
+            value=(
+                f"{discord.utils.format_dt(member.created_at, 'f')}\n"
+                f"{discord.utils.format_dt(member.created_at, 'R')}"
+            ),
+            inline=False,
+        )
         await self._send(embed)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
         if member.bot:
             return
-        embed = self._base_embed(member, "🔴 サーバーから退出しました", discord.Color.red())
-        if member.joined_at:
-            embed.add_field(
-                name="参加日",
-                value=discord.utils.format_dt(member.joined_at, "F"),
-                inline=False,
-            )
+        embed = discord.Embed(
+            description=f"{member.mention} が脱退しました",
+            color=discord.Color.red(),
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
         await self._send(embed)
 
 
