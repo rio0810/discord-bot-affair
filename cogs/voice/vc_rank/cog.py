@@ -26,7 +26,7 @@ class VCRank(commands.Cog, DatabaseBase):
         self.pending_minutes = {}
 
         # --- 除外チャンネル設定 ---
-        self.excluded_channel_ids = config.EXCLUDED_CHANNEL_IDS
+        self.excluded_channel_ids = list(config.EXCLUDED_CHANNEL_IDS)
 
         # --- 加算率が1/3になるカテゴリ（カンマ区切りで複数可） ---
         self.reduced_category_ids = set(config.VC_RANK_REDUCED_CATEGORY_IDS)

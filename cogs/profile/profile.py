@@ -16,7 +16,7 @@ _AUTHOR_USERNAME_RE = re.compile(r"\(@([^)]+)\)\s*$")
 class VoiceProfile(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.profile_target_channel_ids = config.PROFILE_TARGET_CHANNEL_IDS
+        self.profile_target_channel_ids = list(config.PROFILE_TARGET_CHANNEL_IDS)
         self.sent_messages: dict[int, discord.Message] = {}
         # member_id -> 最新プロフィールメッセージ のキャッシュ
         self._profile_cache: dict[int, discord.Message] = {}
