@@ -3,7 +3,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 import psycopg2.extras
-from datetime import datetime
+from datetime import date, datetime, timedelta
 import asyncio
 import io
 import math
@@ -50,6 +50,15 @@ class VCRank(commands.Cog, DatabaseBase):
                     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS text_rank INTEGER DEFAULT 0")
                     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS mp_tickets INT DEFAULT 0")
                     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS user_name TEXT")
+                    # 日別のVC時間（新人審査などで「直近1週間」を出すために使う）
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS vc_daily (
+                            user_id BIGINT NOT NULL,
+                            day DATE NOT NULL,
+                            minutes INT NOT NULL DEFAULT 0,
+                            PRIMARY KEY (user_id, day)
+                        )
+                    """)
                     conn.commit()
         except Exception as e:
             logger.error(f"users のスキーマ準備に失敗しました: {e}")
@@ -224,6 +233,14 @@ class VCRank(commands.Cog, DatabaseBase):
                     user_name = EXCLUDED.user_name
             """, (member.id, new_total, new_rank, tickets_gained, member.display_name))
 
+            # 日別の内訳も残す（直近1週間などの期間集計用）
+            cur.execute("""
+                INSERT INTO vc_daily (user_id, day, minutes)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (user_id, day) DO UPDATE SET
+                    minutes = vc_daily.minutes + EXCLUDED.minutes
+            """, (member.id, date.today(), minutes))
+
             conn.commit()
 
         except Exception as e:
@@ -232,6 +249,26 @@ class VCRank(commands.Cog, DatabaseBase):
         finally:
             cur.close()
             conn.close()
+
+    def get_recent_vc_minutes(self, user_id: int, days: int = 7) -> int | None:
+        """直近 days 日間に計上されたVC時間（分）。取得できなければ None。
+
+        当日を含む days 日ぶんを合計する（days=7 なら今日から6日前まで）。
+        日別の記録は `vc_daily` に入れ始めた日以降のぶんしか無い点に注意。"""
+        since = date.today() - timedelta(days=days - 1)
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COALESCE(SUM(minutes), 0) FROM vc_daily "
+                        "WHERE user_id = %s AND day >= %s",
+                        (user_id, since),
+                    )
+                    row = cur.fetchone()
+                    return int(row[0]) if row else 0
+        except Exception as e:
+            logger.error(f"直近{days}日のVC時間の取得に失敗しました: {e}")
+            return None
 
     @app_commands.command(name="rank", description="現在のVCランクと滞在時間を確認します")
     async def vc_status(self, interaction: discord.Interaction):

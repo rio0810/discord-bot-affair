@@ -100,6 +100,7 @@ commands.Cog + DatabaseBase (core/db_base.py)
 
 **Database:** PostgreSQL (service name `db` in Docker). Schema in `init.sql`:
 - `users(user_id, vc_minutes_total, rank)`
+- `vc_daily(user_id, day, minutes)` — per-day VC minutes written alongside `users.vc_minutes_total` by `voice/vc_rank/`; used for period sums like the newcomer review's last-7-days figure (also auto-created at cog load)
 - `trial_invites(recruiter_id, target_id, invited_at)` — one-shot trial-call invite history (also auto-created at cog load)
 - `call_blocks(blocker_id, blocked_id, created_at)` — call-matching blocks, hides both users from each other's target list (also auto-created at cog load)
 - `call_room_limits(user_id, max_rooms)` — per-user room-cap override set via the panel's 1-room-limit toggle button (also auto-created at cog load)
@@ -115,7 +116,7 @@ commands.Cog + DatabaseBase (core/db_base.py)
 - `voice/temp_vc.py` — join-to-create temp VCs; sweeps empty temp VCs every 5 min (`temp_vcs` table); rename panel in the VC's text chat
 - `onboarding/recording_score/` — `review_deadline_loop` every 10 min: mentions unscored reviewers at 12h and force-finalizes the review at 21h (`interview_reviews` table)
 - `onboarding/recording_score/` — `unsubmitted_ban_loop` every 10 min (only when `UNSUBMITTED_BAN_HOURS` > 0): bans members who still hold the review/waiting role and haven't submitted (`_has_submitted`: `interview_done` / `interview_reviews` / `interview_verdicts`) `UNSUBMITTED_BAN_HOURS` after `joined_at`. No warning DM and no Discord notification — console logging only
-- `onboarding/newcomer_review.py` — `review_loop` hourly: when a `NEWCOMER_ROLE_ID` holder has been in the server ≥7 days (`joined_at`), posts a thread to `NEWCOMER_REVIEW_FORUM_ID` with their saved profile embed (`member_profiles`, stored by the profile wizard) + メンバー化/BAN buttons (anyone can press). Dedup via `newcomer_reviews`; double-verdict guard via `newcomer_verdicts`. Approval removes `NEWCOMER_ROLE_ID` and adds `MEMBER_ROLE_ID`
+- `onboarding/newcomer_review.py` — `review_loop` hourly: when a `NEWCOMER_ROLE_ID` holder has been in the server ≥7 days (`joined_at`), posts a thread to `NEWCOMER_REVIEW_FORUM_ID` with their saved profile embed (`member_profiles`, stored by the profile wizard) + メンバー化/BAN buttons (anyone can press). Dedup via `newcomer_reviews`; double-verdict guard via `newcomer_verdicts`. Approval removes `NEWCOMER_ROLE_ID` and adds `MEMBER_ROLE_ID`. The post also shows the member's **VC time over the last 7 days**, read from `vc_daily` via `VCRank.get_recent_vc_minutes()` (`bot.get_cog("VCRank")`; shows 不明 if unavailable)
 
 ## Slash Commands Reference
 

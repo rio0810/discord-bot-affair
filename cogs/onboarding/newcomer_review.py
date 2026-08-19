@@ -254,32 +254,44 @@ class NewcomerReview(commands.Cog, DatabaseBase):
         ch = self.bot.get_channel(self.forum_id) if self.forum_id else None
         return ch if isinstance(ch, discord.ForumChannel) else None
 
-    def _review_view(self, member: discord.Member) -> discord.ui.LayoutView:
-        """レビュー投稿を Components V2（Container + Separator の区切り線）で組む。"""
+    def _weekly_vc_text(self, user_id: int) -> str:
+        """直近1週間のVC時間の表示文字列（VCRank cog から取得）。"""
+        cog = self.bot.get_cog("VCRank")
+        minutes = cog.get_recent_vc_minutes(user_id, days=7) if cog is not None else None
+        if minutes is None:
+            return "不明"
+        hours, mins = divmod(minutes, 60)
+        return f"{hours}時間{mins}分" if hours else f"{mins}分"
+
+    def _review_embed(self, member: discord.Member) -> discord.Embed:
+        """レビュー投稿の本文（Embed）。"""
         stored = self._get_profile(member.id)
         profile_text = (stored.get("description") if stored else None) or "（プロフィールが保存されていません）"
         joined = discord.utils.format_dt(member.joined_at, "D") if member.joined_at is not None else "不明"
 
-        large = discord.SeparatorSpacing.large
-        view = discord.ui.LayoutView(timeout=None)
-        container = discord.ui.Container(accent_colour=discord.Colour.orange())
-        container.add_item(discord.ui.TextDisplay("## ⏳ 新人審査"))
-        container.add_item(discord.ui.Separator(spacing=large))
-        container.add_item(discord.ui.TextDisplay(
-            f"{member.mention} さんがサーバー加入から **1週間** 経過しました。\n"
-            "下の **「⚖️ 判定する」** ボタンから、**メンバーへの昇格** または **BAN** を選んでください。"
-        ))
-        container.add_item(discord.ui.Separator(spacing=large))
-        container.add_item(discord.ui.TextDisplay(
-            f"**対象メンバー：**{member.mention}\n**加入日：**{joined}"
-        ))
-        container.add_item(discord.ui.Separator(spacing=large))
-        container.add_item(discord.ui.TextDisplay(f"### 📋 プロフィール\n{profile_text}"))
-        container.add_item(discord.ui.Separator(spacing=large))
-        row = discord.ui.ActionRow()
-        row.add_item(NewcomerVerdictButton(member.id))
-        container.add_item(row)
-        view.add_item(container)
+        embed = discord.Embed(
+            title="⏳ 新人審査",
+            description=(
+                f"{member.mention} さんがサーバー加入から **1週間** 経過しました。\n"
+                "下の **「⚖️ 判定する」** ボタンから、**メンバーへの昇格** または **BAN** を選んでください。"
+            ),
+            color=discord.Color.orange(),
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.add_field(name="📅 加入日", value=joined, inline=True)
+        embed.add_field(name="🎧 直近1週間のVC時間", value=self._weekly_vc_text(member.id), inline=True)
+        # フィールドの上限は1024文字なので、長いプロフィールは切り詰める
+        if len(profile_text) > 1024:
+            profile_text = profile_text[:1023] + "…"
+        embed.add_field(name="📋 プロフィール", value=profile_text, inline=False)
+        embed.set_footer(text=f"ユーザーID: {member.id}")
+        return embed
+
+    def _review_view(self, member: discord.Member) -> discord.ui.View:
+        """判定ボタンだけを載せた View（再起動後も押せる永続ボタン）。"""
+        view = discord.ui.View(timeout=None)
+        view.add_item(NewcomerVerdictButton(member.id))
         return view
 
     async def _post_review(self, guild: discord.Guild, member: discord.Member):
@@ -291,6 +303,7 @@ class NewcomerReview(commands.Cog, DatabaseBase):
         try:
             await forum.create_thread(
                 name=member.display_name[:100],
+                embed=self._review_embed(member),
                 view=self._review_view(member),
                 allowed_mentions=discord.AllowedMentions.none(),
             )

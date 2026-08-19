@@ -9,6 +9,14 @@ CREATE TABLE IF NOT EXISTS users (
     user_name TEXT
 );
 
+-- 1-2. 日別のVC時間（新人審査で「直近1週間」を出すなど期間集計に使う）
+CREATE TABLE IF NOT EXISTS vc_daily (
+    user_id BIGINT NOT NULL,
+    day DATE NOT NULL,
+    minutes INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+);
+
 -- 2. お試し個通の誘った履歴（同じ相手を2度誘えないようにする）
 CREATE TABLE IF NOT EXISTS trial_invites (
     recruiter_id BIGINT NOT NULL,
