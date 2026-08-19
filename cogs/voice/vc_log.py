@@ -92,7 +92,6 @@ class VCLog(commands.Cog):
                 f"{member.mention} が {after.channel.mention} に参加しました",
                 discord.Color.green(),
             )
-            embed.add_field(name="🔊 チャンネル", value=after.channel.name, inline=False)
         elif after.channel is None:
             # 退出
             stay = self._stay_value(member.id, before.channel.id)
@@ -103,7 +102,6 @@ class VCLog(commands.Cog):
                 f"{member.mention} が {before.channel.mention} から退出しました",
                 discord.Color.red(),
             )
-            embed.add_field(name="🔇 チャンネル", value=before.channel.name, inline=False)
             if stay:
                 embed.add_field(name="⏱ 滞在時間", value=stay, inline=False)
         else:
