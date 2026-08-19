@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from core.admin_base import AdminCogBase
 from core.db_base import DatabaseBase
-from ui.profile_wizard import (
+from .wizard import (
     ZERO_ROMANCE_ROLE_ID,
     ROMANCE_ROLE_ID,
     _hide_category_from_role,

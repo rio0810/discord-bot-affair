@@ -11,9 +11,10 @@ logging.emit は同期・別スレッドから呼ばれ得るため、レコー�
 
 import asyncio
 import logging
-import os
 
 import discord
+
+from .config import ERROR_LOG_CHANNEL_ID
 
 _THIS_LOGGER_PREFIX = __name__  # 自分自身のログは弾いて無限ループを防ぐ
 
@@ -98,7 +99,7 @@ def setup_logging(bot: discord.Client) -> DiscordLogHandler | None:
         )
         root.addHandler(console)
 
-    channel_id = int(os.getenv("ERROR_LOG_CHANNEL_ID") or "0")
+    channel_id = ERROR_LOG_CHANNEL_ID
     if not channel_id:
         return None
 

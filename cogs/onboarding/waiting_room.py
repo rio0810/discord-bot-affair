@@ -1,9 +1,9 @@
 import logging
+
 import discord
 from discord.ext import commands
-import os
 
-
+from core import config
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +15,8 @@ class WaitingRoom(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.waiting_role_id = int(os.getenv("WAITING_ROLE_ID") or "0")
-        self.visible_category_id = int(os.getenv("WAITING_CATEGORY_ID") or "0")
+        self.waiting_role_id = config.WAITING_ROLE_ID
+        self.visible_category_id = config.WAITING_CATEGORY_ID
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):

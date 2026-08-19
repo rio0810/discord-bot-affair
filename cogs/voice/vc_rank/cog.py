@@ -6,9 +6,10 @@ import psycopg2.extras
 from datetime import datetime
 import asyncio
 import io
-import math, os
+import math
+from core import config
 from core.db_base import DatabaseBase
-from ui.rank_card import render_rank_card
+from .rank_card import render_rank_card
 
 
 logger = logging.getLogger(__name__)
@@ -25,12 +26,10 @@ class VCRank(commands.Cog, DatabaseBase):
         self.pending_minutes = {}
 
         # --- 除外チャンネル設定 ---
-        env_excluded = os.getenv("EXCLUDED_CHANNEL_IDS")
-        self.excluded_channel_ids = [int(i.strip()) for i in env_excluded.split(",")] if env_excluded else []
+        self.excluded_channel_ids = config.EXCLUDED_CHANNEL_IDS
 
         # --- 加算率が1/3になるカテゴリ（カンマ区切りで複数可） ---
-        env_reduced = os.getenv("VC_RANK_REDUCED_CATEGORY_IDS", "")
-        self.reduced_category_ids = {int(i.strip()) for i in env_reduced.split(",") if i.strip().isdigit()}
+        self.reduced_category_ids = set(config.VC_RANK_REDUCED_CATEGORY_IDS)
         self.reduced_rate = 1 / 3
 
         # 定期更新タスクの開始

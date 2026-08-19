@@ -1,12 +1,11 @@
 import logging
-import os
 
 import discord
 from discord.ext import commands
 
-logger = logging.getLogger(__name__)
+from core import config
 
-DEFAULT_LOG_CHANNEL_ID = 1530463807418273913
+logger = logging.getLogger(__name__)
 
 
 class JoinLeaveLog(commands.Cog):
@@ -14,9 +13,7 @@ class JoinLeaveLog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.log_channel_id = int(
-            os.getenv("JOIN_LEAVE_LOG_CHANNEL_ID") or DEFAULT_LOG_CHANNEL_ID
-        )
+        self.log_channel_id = config.JOIN_LEAVE_LOG_CHANNEL_ID
 
     async def _send(self, embed: discord.Embed):
         if not self.log_channel_id:

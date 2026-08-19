@@ -1,9 +1,10 @@
 import logging
-import os
 import re
 
 import discord
 from discord.ext import commands
+
+from core import config
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class PreBan(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID") or "0")
+        self.admin_role_id = config.ADMIN_ROLE_ID
 
     def is_admin(self, member: discord.Member) -> bool:
         if getattr(member, "guild_permissions", None) and member.guild_permissions.administrator:

@@ -1,11 +1,11 @@
 import asyncio
 import logging
-import os
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from core import config
 from core.admin_base import AdminCogBase
 
 from .constants import (
@@ -33,20 +33,20 @@ class CallMatchingCog(commands.Cog, CallDBMixin):
     def __init__(self, bot: commands.Bot):
         super().__init__()
         self.bot = bot
-        self.male_role_id = int(os.getenv("MALE_ROLE_ID", "0"))
-        self.female_role_id = int(os.getenv("FEMALE_ROLE_ID", "0"))
-        self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID", "0"))
+        self.male_role_id = config.MALE_ROLE_ID
+        self.female_role_id = config.FEMALE_ROLE_ID
+        self.admin_role_id = config.ADMIN_ROLE_ID
         # 新人ロール保持者は個通を利用できない（未設定なら制限なし）
-        self.newcomer_role_id = int(os.getenv("NEWCOMER_ROLE_ID") or "0")
+        self.newcomer_role_id = config.NEWCOMER_ROLE_ID
         # 雑談ロール保持者も個通を利用できない（プロフ作成時にその旨を案内している）
-        self.zero_romance_role_id = int(os.getenv("ZERO_ROMANCE_ROLE_ID") or "0")
-        self.category_id = int(os.getenv("CALL_CATEGORY_ID", "0"))
+        self.zero_romance_role_id = config.ZERO_ROMANCE_ROLE_ID
+        self.category_id = config.CALL_CATEGORY_ID
         # 通話マッチングのログ先（未設定ならログは送られない）
-        self.log_channel_id = int(os.getenv("CALL_LOG_CHANNEL_ID", "0"))
-        self.max_rooms_per_female = int(os.getenv("MAX_ROOMS_PER_FEMALE", "2"))
-        self.max_rooms_per_male = int(os.getenv("MAX_ROOMS_PER_MALE", "2"))
+        self.log_channel_id = config.CALL_LOG_CHANNEL_ID
+        self.max_rooms_per_female = config.MAX_ROOMS_PER_FEMALE
+        self.max_rooms_per_male = config.MAX_ROOMS_PER_MALE
         # お試し個通の残り5分でVCに鳴らすサウンドボード（ID または 名前。未設定なら鳴らさない）
-        self.trial_warning_sound = os.getenv("TRIAL_WARNING_SOUND", "").strip()
+        self.trial_warning_sound = config.TRIAL_WARNING_SOUND
         self.trial_watcher.start()
 
     def cog_unload(self):

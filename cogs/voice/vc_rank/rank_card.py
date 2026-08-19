@@ -7,10 +7,12 @@ import os
 
 from PIL import Image, ImageDraw, ImageFont
 
+from core import config
+
 # カードのサイズ（VC・テキストの2バーを載せるため縦長め）
 WIDTH, HEIGHT = 900, 280
 
-_ICON_DIR = os.path.join(os.path.dirname(__file__), "..", "icon")
+_ICON_DIR = config.ICON_DIR
 
 _FONT_CANDIDATES_BOLD = [
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
@@ -37,8 +39,8 @@ def _load_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
 
 
 def _load_icon(name: str, size: int, color: tuple[int, int, int]) -> Image.Image | None:
-    """icon フォルダのアイコンを読み込み、指定色に着色して返す（暗い元画像を明るく塗り直す）。"""
-    path = os.path.join(_ICON_DIR, name)
+    """assets/icons のアイコンを読み込み、指定色に着色して返す（暗い元画像を明るく塗り直す）。"""
+    path = _ICON_DIR / name
     try:
         icon = Image.open(path).convert("RGBA").resize((size, size))
     except Exception:

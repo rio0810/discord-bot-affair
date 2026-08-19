@@ -1,8 +1,9 @@
 import discord
 from discord.ext import commands
 import logging
-import os
 import re
+
+from core import config
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +16,7 @@ _AUTHOR_USERNAME_RE = re.compile(r"\(@([^)]+)\)\s*$")
 class VoiceProfile(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        env_channels = os.getenv("PROFILE_TARGET_CHANNEL_IDS", "")
-        self.profile_target_channel_ids = (
-            [int(s.strip()) for s in env_channels.split(",") if s.strip()]
-            if env_channels else []
-        )
+        self.profile_target_channel_ids = config.PROFILE_TARGET_CHANNEL_IDS
         self.sent_messages: dict[int, discord.Message] = {}
         # member_id -> 最新プロフィールメッセージ のキャッシュ
         self._profile_cache: dict[int, discord.Message] = {}

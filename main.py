@@ -1,17 +1,41 @@
+import logging
+import re
+from pathlib import Path
+
 import discord
 from discord.ext import commands
-import logging
-import os
-import dotenv
-from server import server_thread
+
+from core.config import BASE_DIR, MY_GUILD_ID, TOKEN
 from core.log_to_discord import setup_logging
+from server import server_thread
 
 logger = logging.getLogger(__name__)
 
-dotenv.load_dotenv()
-TOKEN = os.environ.get("TOKEN")
-GUILD = os.environ.get("MY_GUILD")
-MY_GUILD = discord.Object(id=GUILD)
+MY_GUILD = discord.Object(id=MY_GUILD_ID)
+
+COGS_DIR = BASE_DIR / "cogs"
+
+
+def _init_kind(path: Path) -> str:
+    """パッケージの __init__.py を見て、その役割を判定する。
+
+    - "cog"   … setup を持つ = それ自体が拡張機能（例: onboarding/recording_score）
+    - "group" … COG_GROUP = True = 分類用のフォルダなので中を再帰的に読む
+    - "skip"  … どちらでもない補助パッケージ（例: profile/wizard）
+    """
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return "skip"
+    # 自前で定義しているか、サブモジュールから re-export しているか
+    if re.search(r"^\s*(async\s+)?def setup\b", source, re.M) or re.search(
+        r"^from \.\S+ import [^\n]*\bsetup\b", source, re.M
+    ):
+        return "cog"
+    if re.search(r"^COG_GROUP\s*=\s*True", source, re.M):
+        return "group"
+    return "skip"
+
 
 class DiscordBot(commands.Bot):
     def __init__(self):
@@ -22,20 +46,34 @@ class DiscordBot(commands.Bot):
         
         super().__init__(command_prefix="!", intents=intents)
 
+    async def _load_cogs(self, directory: Path):
+        """cogs/ を再帰的に走査して拡張機能を読み込む。
+
+        - `<dir>/*.py` … 単体ファイルの cog
+        - `<dir>/<feature>/__init__.py` に setup … パッケージ化した cog（中は直接読まない）
+        - `<dir>/<group>/__init__.py` に COG_GROUP … 分類フォルダなので下の階層へ降りる
+        """
+        for entry in sorted(directory.iterdir()):
+            if entry.name.startswith((".", "_")):
+                continue
+            # BASE_DIR からの相対パスをドット区切りのモジュール名にする
+            module = ".".join(entry.relative_to(BASE_DIR).with_suffix("").parts)
+            if entry.is_file() and entry.suffix == ".py":
+                await self.load_extension(module)
+            elif entry.is_dir():
+                init = entry / "__init__.py"
+                kind = _init_kind(init) if init.is_file() else "group"
+                if kind == "cog":
+                    await self.load_extension(module)
+                elif kind == "group":
+                    await self._load_cogs(entry)
+
     async def setup_hook(self):
         # ロギングの初期化（コンソール＋設定時は ERROR 以上を Discord へ）
         setup_logging(self)
 
         # cog（拡張機能）の読み込み
-        #  - cogs/*.py … 単体ファイルの cog
-        #  - cogs/<feature>/__init__.py … パッケージ化した cog（内部モジュールは直接読み込まない）
-        cogs_dir = "./cogs"
-        for entry in sorted(os.listdir(cogs_dir)):
-            full = os.path.join(cogs_dir, entry)
-            if os.path.isfile(full) and entry.endswith(".py") and not entry.startswith("_"):
-                await self.load_extension(f"cogs.{entry[:-3]}")
-            elif os.path.isdir(full) and os.path.isfile(os.path.join(full, "__init__.py")):
-                await self.load_extension(f"cogs.{entry}")
+        await self._load_cogs(COGS_DIR)
         try:
             await self.tree.sync()
         except discord.HTTPException as e:

@@ -1,12 +1,12 @@
 import json
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from core import config
 from core.db_base import DatabaseBase
 
 logger = logging.getLogger(__name__)
@@ -67,13 +67,13 @@ class NewcomerReview(commands.Cog, DatabaseBase):
     def __init__(self, bot: commands.Bot):
         super().__init__()
         self.bot = bot
-        self.newcomer_role_id = int(os.getenv("NEWCOMER_ROLE_ID") or "0")
+        self.newcomer_role_id = config.NEWCOMER_ROLE_ID
         # 昇格時に付与するメンバーロール
-        self.member_role_id = int(os.getenv("MEMBER_ROLE_ID") or "0")
+        self.member_role_id = config.MEMBER_ROLE_ID
         # 1週間レビューの投稿先フォーラム
-        self.forum_id = int(os.getenv("NEWCOMER_REVIEW_FORUM_ID") or "0")
+        self.forum_id = config.NEWCOMER_REVIEW_FORUM_ID
         # 判定結果のメンション用（任意）
-        self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID") or "0")
+        self.admin_role_id = config.ADMIN_ROLE_ID
 
     async def cog_load(self):
         self._ensure_tables()

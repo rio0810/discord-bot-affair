@@ -2,11 +2,11 @@ import logging
 import discord
 from discord.ext import commands
 from discord import app_commands
-import os
 
+from core import config
 from core.admin_base import AdminCogBase
-from ui.profile_wizard import ProfileStartView, RoomPanelView
-from cogs.recording_score.ui import is_audio
+from cogs.profile.wizard import ProfileStartView, RoomPanelView
+from cogs.onboarding.recording_score.ui import is_audio
 
 
 logger = logging.getLogger(__name__)
@@ -60,12 +60,12 @@ class InterviewRoomCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID", "0"))
-        self.male_role_id = int(os.getenv("MALE_ROLE_ID", "0"))
-        self.female_role_id = int(os.getenv("FEMALE_ROLE_ID", "0"))
-        self.category_id = int(os.getenv("INTERVIEW_ROOM_CATEGORY_ID", "0"))
+        self.admin_role_id = config.ADMIN_ROLE_ID
+        self.male_role_id = config.MALE_ROLE_ID
+        self.female_role_id = config.FEMALE_ROLE_ID
+        self.category_id = config.INTERVIEW_ROOM_CATEGORY_ID
         # 録音の転送先（未設定なら転送は行われない）
-        self.forward_channel_id = int(os.getenv("RECORDING_FORWARD_CHANNEL_ID", "0"))
+        self.forward_channel_id = config.RECORDING_FORWARD_CHANNEL_ID
 
     async def cog_load(self):
         # 再起動後もボタンが反応するよう永続ビューを登録

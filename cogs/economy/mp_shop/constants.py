@@ -1,4 +1,4 @@
-import os
+from core import config
 
 # 交換に必要なチケット枚数
 TRIAL_RESET_COST = 20
@@ -15,7 +15,7 @@ GRADIENT_COLORS: dict[str, tuple[int, int]] = {
 }
 # 絵文字画像の上限（Discord仕様：256KB）
 EMOJI_MAX_BYTES = 256 * 1024
-MOOD_PHOTO_COST = int(os.getenv("MOOD_PHOTO_COST") or "3")
+MOOD_PHOTO_COST = config.MOOD_PHOTO_COST
 # 雰囲気写真の閲覧権を得てから画像投稿までの猶予（時間）
 MOOD_PHOTO_HOURS = 24
 # 画像とみなす拡張子

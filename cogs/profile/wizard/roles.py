@@ -1,18 +1,19 @@
 import logging
-import os
 
 import discord
+
+from core import config
 
 from .data import DM_CRITERIA_ROLE_IDS
 
 logger = logging.getLogger(__name__)
 
 # 恋愛の割合で「0割」を選んだ人に付与する雑談ロール（未設定なら付与しない）
-ZERO_ROMANCE_ROLE_ID = int(os.getenv("ZERO_ROMANCE_ROLE_ID", "0"))
+ZERO_ROMANCE_ROLE_ID = config.ZERO_ROMANCE_ROLE_ID
 # 恋愛の割合で「1割以上」を選んだ人に付与する恋愛ロール（未設定なら付与しない）
-ROMANCE_ROLE_ID = int(os.getenv("ROMANCE_ROLE_ID", "0"))
+ROMANCE_ROLE_ID = config.ROMANCE_ROLE_ID
 # 雑談ロール保持者から隠すカテゴリ（未設定なら非表示処理をしない）
-ZERO_ROMANCE_HIDDEN_CATEGORY_ID = int(os.getenv("ZERO_ROMANCE_HIDDEN_CATEGORY_ID", "0"))
+ZERO_ROMANCE_HIDDEN_CATEGORY_ID = config.ZERO_ROMANCE_HIDDEN_CATEGORY_ID
 
 
 async def _hide_category_from_role(guild: discord.Guild, role: discord.Role):

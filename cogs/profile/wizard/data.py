@@ -1,22 +1,23 @@
 import math
-import os
 
 import discord
+
+from core import config
 
 # 男性の面接チャンネルの topic プレフィックス（interview_room.py と揃える）
 INTERVIEW_TOPIC_PREFIX = "interview_room:"
 # 運営共有（障害申告）の送信先
-RECORDING_FORWARD_CHANNEL_ID = int(os.getenv("RECORDING_FORWARD_CHANNEL_ID") or "0")
+RECORDING_FORWARD_CHANNEL_ID = config.RECORDING_FORWARD_CHANNEL_ID
 
 # DM・フレンド申請の可否（雑談・恋愛共通の質問）。選択に応じてロールを付与する
 DM_CRITERIA_FIELD = "DM・フレンド申請の可否"
 DM_CRITERIA_OPTIONS = ["🙆 誰でもOK", "🙅 DM・フレンド申請☓", "🙋 話したことあるなら", "🗣️ 直接聞いてもらってから"]
 # 各選択肢に対応するロールID（未設定＝付与しない）。相互排他で付け替える
 DM_CRITERIA_ROLE_IDS: dict[str, int] = {
-    "🙆 誰でもOK": int(os.getenv("DM_OPEN_ROLE_ID", "0")),
-    "🙅 DM・フレンド申請☓": int(os.getenv("DM_CLOSED_ROLE_ID", "0")),
-    "🙋 話したことあるなら": int(os.getenv("DM_ACQUAINTED_ROLE_ID", "0")),
-    "🗣️ 直接聞いてもらってから": int(os.getenv("DM_ASK_ROLE_ID", "0")),
+    "🙆 誰でもOK": config.DM_OPEN_ROLE_ID,
+    "🙅 DM・フレンド申請☓": config.DM_CLOSED_ROLE_ID,
+    "🙋 話したことあるなら": config.DM_ACQUAINTED_ROLE_ID,
+    "🗣️ 直接聞いてもらってから": config.DM_ASK_ROLE_ID,
 }
 
 # ---------------------------------------------------------------------- #

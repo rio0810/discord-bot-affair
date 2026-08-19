@@ -1,8 +1,8 @@
 import logging
 import discord
 from discord.ext import commands, tasks
-import os
 
+from core import config
 from core.db_base import DatabaseBase
 
 
@@ -70,10 +70,9 @@ class TempVC(commands.Cog, DatabaseBase):
         super().__init__()
         self.bot = bot
         # トリガーVCはカンマ区切りで複数指定可
-        env_lobby = os.getenv("LOBBY_VC_ID", "")
-        self.lobby_vc_ids = {int(i.strip()) for i in env_lobby.split(",") if i.strip().isdigit()}
-        self.category_id = int(os.getenv("TEMP_VC_CATEGORY_ID", "0"))
-        self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID", "0"))
+        self.lobby_vc_ids = set(config.LOBBY_VC_IDS)
+        self.category_id = config.TEMP_VC_CATEGORY_ID
+        self.admin_role_id = config.ADMIN_ROLE_ID
 
     async def cog_load(self):
         self._ensure_table()

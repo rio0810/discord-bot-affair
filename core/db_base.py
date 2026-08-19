@@ -1,17 +1,12 @@
 import psycopg2
 import psycopg2.extras
-import os
+
+from .config import DB_CONFIG
+
 
 class DatabaseBase:
     def __init__(self):
-        self.db_config = {
-            'host': os.getenv('DB_HOST', 'db'),
-            'port': int(os.getenv('DB_PORT', 5432)),
-            'user': os.getenv('DB_USER', 'user'),
-            'password': os.getenv('DB_PASS', 'password'),
-            'dbname': os.getenv('DB_NAME', 'postgres_db'),
-            'sslmode': os.getenv('DB_SSLMODE', 'require') 
-        }
+        self.db_config = dict(DB_CONFIG)
 
     def get_db(self):
         """データベース接続"""

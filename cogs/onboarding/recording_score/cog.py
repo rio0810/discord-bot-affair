@@ -1,9 +1,10 @@
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 
 import discord
 from discord.ext import commands, tasks
+
+from core import config
 
 from .db import RecordingDBMixin
 from .embeds import profile_received_embed, recording_received_embed, submitted_embed
@@ -39,27 +40,27 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
     def __init__(self, bot: commands.Bot):
         super().__init__()
         self.bot = bot
-        self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID", "0"))
-        self.forward_channel_id = int(os.getenv("RECORDING_FORWARD_CHANNEL_ID") or "0")
+        self.admin_role_id = config.ADMIN_ROLE_ID
+        self.forward_channel_id = config.RECORDING_FORWARD_CHANNEL_ID
         # 審査の送信先フォーラム（設定時はユーザー名で新規ポストを作成・男女別）
-        self.forum_male_id = int(os.getenv("RECORDING_FORUM_MALE_ID") or "0")
-        self.forum_female_id = int(os.getenv("RECORDING_FORUM_FEMALE_ID") or "0")
+        self.forum_male_id = config.RECORDING_FORUM_MALE_ID
+        self.forum_female_id = config.RECORDING_FORUM_FEMALE_ID
         # 合否判定で操作するロール（審査ロールは未設定なら待機ロールを使う）
-        self.review_role_id = int(os.getenv("REVIEW_ROLE_ID") or os.getenv("WAITING_ROLE_ID") or "0")
-        self.newcomer_role_id = int(os.getenv("NEWCOMER_ROLE_ID") or "0")
+        self.review_role_id = config.REVIEW_ROLE_ID
+        self.newcomer_role_id = config.NEWCOMER_ROLE_ID
         # 性別判定用ロール
-        self.male_role_id = int(os.getenv("MALE_ROLE_ID") or "0")
-        self.female_role_id = int(os.getenv("FEMALE_ROLE_ID") or "0")
+        self.male_role_id = config.MALE_ROLE_ID
+        self.female_role_id = config.FEMALE_ROLE_ID
         # 合格後にプロフィールを書いてもらう性別別チャンネル
-        self.male_profile_channel_id = int(os.getenv("MALE_PROFILE_CHANNEL_ID") or "0")
-        self.female_profile_channel_id = int(os.getenv("FEMALE_PROFILE_CHANNEL_ID") or "0")
+        self.male_profile_channel_id = config.MALE_PROFILE_CHANNEL_ID
+        self.female_profile_channel_id = config.FEMALE_PROFILE_CHANNEL_ID
         # 雑談ロール保持者は性別別ではなく雑談ユーザー専用チャンネルへ案内する
-        self.zero_romance_role_id = int(os.getenv("ZERO_ROMANCE_ROLE_ID") or "0")
-        self.zero_romance_profile_channel_id = int(os.getenv("ZERO_ROMANCE_PROFILE_CHANNEL_ID") or "0")
+        self.zero_romance_role_id = config.ZERO_ROMANCE_ROLE_ID
+        self.zero_romance_profile_channel_id = config.ZERO_ROMANCE_PROFILE_CHANNEL_ID
         # 合格案内で確認してもらうガイドラインチャンネル
-        self.guideline_channel_id = int(os.getenv("GUIDELINE_CHANNEL_ID") or "0")
+        self.guideline_channel_id = config.GUIDELINE_CHANNEL_ID
         # 審査未提出のまま参加から一定時間が経ったメンバーの自動BAN（未設定・0なら無効）
-        self.unsubmitted_ban_hours = float(os.getenv("UNSUBMITTED_BAN_HOURS") or "0")
+        self.unsubmitted_ban_hours = config.UNSUBMITTED_BAN_HOURS
 
     async def cog_load(self):
         self._ensure_tables()

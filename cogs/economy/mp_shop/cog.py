@@ -1,5 +1,4 @@
 import logging
-import os
 import re
 from datetime import datetime, timedelta
 
@@ -7,6 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from core import config
 from core.admin_base import AdminCogBase
 
 from .constants import (
@@ -33,16 +33,16 @@ class MPShop(commands.Cog, MPShopDBMixin):
     def __init__(self, bot: commands.Bot):
         super().__init__()
         self.bot = bot
-        self.admin_role_id = int(os.getenv("ADMIN_ROLE_ID", "0"))
-        self.text_category_id = int(os.getenv("MP_TEXT_CATEGORY_ID", "0"))
+        self.admin_role_id = config.ADMIN_ROLE_ID
+        self.text_category_id = config.MP_TEXT_CATEGORY_ID
         # テキストチャットの閲覧ロール選択肢は男性・女性ロールのみ
-        self.male_role_id = int(os.getenv("MALE_ROLE_ID", "0"))
-        self.female_role_id = int(os.getenv("FEMALE_ROLE_ID", "0"))
+        self.male_role_id = config.MALE_ROLE_ID
+        self.female_role_id = config.FEMALE_ROLE_ID
         # 雰囲気写真の閲覧ロールとチャンネル（未設定=空文字でも0扱い）
-        self.mood_role_id = int(os.getenv("MOOD_PHOTO_ROLE_ID") or "0")
-        self.mood_channel_id = int(os.getenv("MOOD_PHOTO_CHANNEL_ID") or "0")
+        self.mood_role_id = config.MOOD_PHOTO_ROLE_ID
+        self.mood_channel_id = config.MOOD_PHOTO_CHANNEL_ID
         # チケット配布/没収のログ先（未設定ならログを出さない）
-        self.log_channel_id = int(os.getenv("MP_LOG_CHANNEL_ID") or "0")
+        self.log_channel_id = config.MP_LOG_CHANNEL_ID
 
     async def cog_load(self):
         self.bot.add_view(MPShopView())
