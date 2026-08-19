@@ -144,9 +144,12 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
     # ------------------------------------------------------------------ #
     async def apply_verdict(self, interaction: discord.Interaction, submitter_id: int, verdict: str):
         guild = interaction.guild
+        # ロール変更・BAN・案内送信で3秒を超えることがあるため、先に応答を保留する
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         # 二重判定を防ぐ（最初の1回だけ通す）
         if not self._claim_verdict(submitter_id):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "この人の合否は既に処理済みです。", ephemeral=True
             )
             return
@@ -155,7 +158,7 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
             member = guild.get_member(submitter_id)
             if member is None:
                 self._unclaim_verdict(submitter_id)
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "❌ 対象者がサーバーにいないため、ロールを変更できませんでした。", ephemeral=True
                 )
                 return
@@ -168,13 +171,13 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
                     await member.add_roles(newcomer_role, reason="審査合格：新人ロール付与")
             except discord.Forbidden:
                 self._unclaim_verdict(submitter_id)
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "❌ ロールの変更に失敗しました（Botの権限・ロール順を確認してください）。", ephemeral=True
                 )
                 return
             # 合格者本人のチャンネルへ、性別ごとのプロフィールチャンネルへの案内を送る
             await self._notify_profile_channel(guild, member)
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"✅ {member.mention} を **合格** にしました。（審査ロール解除・新人ロール付与）\n"
                 f"**判定者：**{interaction.user.mention}"
             )
@@ -186,15 +189,15 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
                 )
             except discord.Forbidden:
                 self._unclaim_verdict(submitter_id)
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "❌ BANに失敗しました（Botのban権限・ロール順を確認してください）。", ephemeral=True
                 )
                 return
             except discord.HTTPException as e:
                 self._unclaim_verdict(submitter_id)
-                await interaction.response.send_message(f"❌ BANに失敗しました：{e}", ephemeral=True)
+                await interaction.followup.send(f"❌ BANに失敗しました：{e}", ephemeral=True)
                 return
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"🔨 <@{submitter_id}> を **不合格** としてBANしました。\n"
                 f"**判定者：**{interaction.user.mention}"
             )
