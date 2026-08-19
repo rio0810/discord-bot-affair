@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 
 from core import config
+from core.log_channel import send_log_embed
 
 logger = logging.getLogger(__name__)
 
@@ -16,22 +17,7 @@ class JoinLeaveLog(commands.Cog):
         self.log_channel_id = config.JOIN_LEAVE_LOG_CHANNEL_ID
 
     async def _send(self, embed: discord.Embed):
-        if not self.log_channel_id:
-            return
-        channel = self.bot.get_channel(self.log_channel_id)
-        if channel is None:
-            try:
-                channel = await self.bot.fetch_channel(self.log_channel_id)
-            except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
-                logger.error(f"入退室ログチャンネルを取得できませんでした: {e}")
-                return
-        if not isinstance(channel, discord.abc.Messageable):
-            logger.error("入退室ログチャンネルがテキストチャンネルではありません")
-            return
-        try:
-            await channel.send(embed=embed)
-        except (discord.Forbidden, discord.HTTPException) as e:
-            logger.error(f"入退室ログの送信に失敗しました: {e}")
+        await send_log_embed(self.bot, self.log_channel_id, embed, label="入退室ログ")
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):

@@ -106,6 +106,7 @@ VC_RANK_REDUCED_CATEGORY_IDS = env_id_list("VC_RANK_REDUCED_CATEGORY_IDS")
 # --------------------------------------------------------------------- #
 ERROR_LOG_CHANNEL_ID = env_int("ERROR_LOG_CHANNEL_ID")
 JOIN_LEAVE_LOG_CHANNEL_ID = env_int("JOIN_LEAVE_LOG_CHANNEL_ID", 1530463807418273913)
+VC_LOG_CHANNEL_ID = env_int("VC_LOG_CHANNEL_ID")
 CALL_LOG_CHANNEL_ID = env_int("CALL_LOG_CHANNEL_ID")
 MP_LOG_CHANNEL_ID = env_int("MP_LOG_CHANNEL_ID")
 PROFILE_TARGET_CHANNEL_IDS = env_id_list("PROFILE_TARGET_CHANNEL_IDS")
@@ -123,6 +124,8 @@ MOOD_PHOTO_CHANNEL_ID = env_int("MOOD_PHOTO_CHANNEL_ID")
 # ボイスチャンネル
 # --------------------------------------------------------------------- #
 EXCLUDED_CHANNEL_IDS = env_id_list("EXCLUDED_CHANNEL_IDS")
+# VCログを出さないVC・カテゴリ（未設定なら全VCを記録する）
+VC_LOG_EXCLUDED_CHANNEL_IDS = env_id_list("VC_LOG_EXCLUDED_CHANNEL_IDS")
 LOBBY_VC_IDS = env_id_list("LOBBY_VC_ID")
 
 # --------------------------------------------------------------------- #
