@@ -22,9 +22,9 @@ def _clip(text: str) -> str:
 
 
 class MessageLog(commands.Cog):
-    """メッセージの編集をログチャンネルに Embed で流す。
+    """メッセージの編集・削除をログチャンネルに Embed で流す（編集=金／削除=赤）。
 
-    `MESSAGE_LOG_CHANNEL_ID` が未設定なら何もしない。
+    どちらも `MESSAGE_LOG_CHANNEL_ID` へ送る。未設定なら何もしない。
     埋め込みの遅延生成など本文が変わらない編集や、Bot・DMは対象外。"""
 
     def __init__(self, bot: commands.Bot):
@@ -69,6 +69,37 @@ class MessageLog(commands.Cog):
         embed.add_field(name="編集後", value=_clip(after.content), inline=False)
 
         await send_log_embed(self.bot, self.log_channel_id, embed, label="メッセージログ")
+
+    @commands.Cog.listener()
+    async def on_message_delete(self, message: discord.Message):
+        if not self.log_channel_id:
+            return
+        if message.guild is None or message.author.bot:
+            return
+        if self._is_excluded(message.channel):
+            return
+
+        embed = discord.Embed(
+            description=(
+                f"{message.author.mention} の "
+                f"{message.channel.mention} のメッセージが削除されました"
+            ),
+            color=discord.Color.red(),
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.set_author(
+            name=str(message.author), icon_url=message.author.display_avatar.url
+        )
+        embed.set_footer(text=f"ユーザーID: {message.author.id}")
+        embed.add_field(name="本文", value=_clip(message.content), inline=False)
+        if message.attachments:
+            # 添付そのものは削除済みで取得できないため、ファイル名だけ残す
+            names = "\n".join(a.filename for a in message.attachments)
+            embed.add_field(name="添付ファイル", value=_clip(names), inline=False)
+
+        await send_log_embed(
+            self.bot, self.log_channel_id, embed, label="メッセージ削除ログ"
+        )
 
 
 async def setup(bot: commands.Bot):

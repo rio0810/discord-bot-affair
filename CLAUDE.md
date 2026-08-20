@@ -35,7 +35,7 @@ Copy `.env.example` to `.env` and fill in:
 | `JOIN_LEAVE_LOG_CHANNEL_ID` | Channel where server join/leave logs are posted as embeds (`cogs/logs/join_leave_log.py`; 入室=green, 退室=red). Defaults to `1530463807418273913` if unset |
 | `VC_LOG_CHANNEL_ID` | Channel where VC join/leave/move logs are posted as embeds (`cogs/logs/vc_log.py`; 参加=green, 退出=red, 移動=blurple). No VC logging if unset (optional) |
 | `VC_LOG_EXCLUDED_CHANNEL_IDS` | Comma-separated VC **or category** IDs excluded from VC logging (optional) |
-| `MESSAGE_LOG_CHANNEL_ID` | Channel where message-edit logs are posted as embeds (`cogs/logs/message_log.py`; before/after content, jump link, gold). No message logging if unset (optional) |
+| `MESSAGE_LOG_CHANNEL_ID` | Channel where message edit/delete logs are posted as embeds (`cogs/logs/message_log.py`; 編集=gold with before/after + jump link, 削除=red with content + attachment filenames). No message logging if unset (optional) |
 | `MESSAGE_LOG_EXCLUDED_CHANNEL_IDS` | Comma-separated channel / category / forum-parent IDs excluded from message-edit logging (optional) |
 | `EXCLUDED_CHANNEL_IDS` | Comma-separated VC IDs excluded from VC-time tracking |
 | `VC_RANK_REDUCED_CATEGORY_IDS` | Comma-separated category IDs where VC time accrues at 1/3 rate (fractional carry) |
@@ -71,7 +71,7 @@ cogs/            機能ごとの cog。ドメインでフォルダ分けして�
   voice/         temp_vc · vc_rank/（cog.py + rank_card.py）
   economy/       mp_shop/
   moderation/    preban
-  logs/          join_leave_log · vc_log · message_log
+  logs/          join_leave_log · vc_log · message_log（編集・削除）
   misc/          talk
 assets/          icons/*.png · topics.json
 docs/            運用ドキュメント
