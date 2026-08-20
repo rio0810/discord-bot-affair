@@ -32,9 +32,11 @@ Copy `.env.example` to `.env` and fill in:
 | `DM_OPEN_ROLE_ID` / `DM_CLOSED_ROLE_ID` / `DM_ACQUAINTED_ROLE_ID` / `DM_ASK_ROLE_ID` | Roles auto-granted (mutually exclusive) from the profile wizard's 「DM・フレンド申請の可否」 select — 誰でもOK / DM× / 話したことあるなら / 直接聞いてもらってから respectively. Common to both 雑談 and 恋愛 profiles (optional) |
 | `ADMIN_ROLE_ID` | Role ID that can use admin commands |
 | `ERROR_LOG_CHANNEL_ID` | Text channel that `ERROR`+ logs are streamed to (via `core/log_to_discord.py`'s logging handler). Console/Railway logging still works regardless; no Discord streaming if unset (optional) |
-| `JOIN_LEAVE_LOG_CHANNEL_ID` | Channel where server join/leave logs are posted as embeds (`cogs/moderation/join_leave_log.py`; 入室=green, 退室=red). Defaults to `1530463807418273913` if unset |
-| `VC_LOG_CHANNEL_ID` | Channel where VC join/leave/move logs are posted as embeds (`cogs/voice/vc_log.py`; 参加=green, 退出=red, 移動=blurple). No VC logging if unset (optional) |
+| `JOIN_LEAVE_LOG_CHANNEL_ID` | Channel where server join/leave logs are posted as embeds (`cogs/logs/join_leave_log.py`; 入室=green, 退室=red). Defaults to `1530463807418273913` if unset |
+| `VC_LOG_CHANNEL_ID` | Channel where VC join/leave/move logs are posted as embeds (`cogs/logs/vc_log.py`; 参加=green, 退出=red, 移動=blurple). No VC logging if unset (optional) |
 | `VC_LOG_EXCLUDED_CHANNEL_IDS` | Comma-separated VC **or category** IDs excluded from VC logging (optional) |
+| `MESSAGE_LOG_CHANNEL_ID` | Channel where message-edit logs are posted as embeds (`cogs/logs/message_log.py`; before/after content, jump link, gold). No message logging if unset (optional) |
+| `MESSAGE_LOG_EXCLUDED_CHANNEL_IDS` | Comma-separated channel / category / forum-parent IDs excluded from message-edit logging (optional) |
 | `EXCLUDED_CHANNEL_IDS` | Comma-separated VC IDs excluded from VC-time tracking |
 | `VC_RANK_REDUCED_CATEGORY_IDS` | Comma-separated category IDs where VC time accrues at 1/3 rate (fractional carry) |
 | `INTERVIEW_ROOM_CATEGORY_ID` | Category ID under which per-member interview rooms are created (optional) |
@@ -68,7 +70,8 @@ cogs/            機能ごとの cog。ドメインでフォルダ分けして�
   matching/      call_matching/
   voice/         temp_vc · vc_rank/（cog.py + rank_card.py）
   economy/       mp_shop/
-  moderation/    preban · join_leave_log
+  moderation/    preban
+  logs/          join_leave_log · vc_log · message_log
   misc/          talk
 assets/          icons/*.png · topics.json
 docs/            運用ドキュメント
@@ -107,7 +110,7 @@ commands.Cog + DatabaseBase (core/db_base.py)
 
 **DB credentials** default to host=`db`, user=`user`, pass=`password`, db=`postgres_db`, sslmode=`require` (matching the `compose.yml` service) and are overridable via `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASS`/`DB_NAME`/`DB_SSLMODE`. They are assembled in `core/config.py` as `DB_CONFIG` and consumed by `core/db_base.py`.
 
-**Log-channel helper:** `core/log_channel.py`'s `send_log_embed(bot, channel_id, embed, label=...)` sends an embed to a configured log channel, swallowing missing-channel/permission errors. Used by `moderation/join_leave_log.py` and `voice/vc_log.py`.
+**Log-channel helper:** `core/log_channel.py`'s `send_log_embed(bot, channel_id, embed, label=...)` sends an embed to a configured log channel, swallowing missing-channel/permission errors. Used by `logs/join_leave_log.py`, `logs/message_log.py` and `logs/vc_log.py`.
 
 **UI components** live next to the feature that owns them (`<feature>/ui.py`, or the wizard package). They are Discord `View` subclasses with persistent buttons (custom_id prefixed `persistent:`) so they survive bot restarts — custom_ids are independent of file paths, so moving modules never invalidates already-posted panels.
 
