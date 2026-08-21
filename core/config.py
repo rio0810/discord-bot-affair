@@ -160,3 +160,9 @@ DB_CONFIG = {
     "dbname": env_str("DB_NAME", "postgres_db"),
     "sslmode": env_str("DB_SSLMODE", "require"),
 }
+
+# コネクションプールの下限・上限（core/db_base.py が使う）。
+# 上限は「同時に DB を触りうるスレッド数」の目安で、増やしすぎると Postgres 側の
+# max_connections を圧迫する
+DB_POOL_MIN = env_int("DB_POOL_MIN", 1)
+DB_POOL_MAX = env_int("DB_POOL_MAX", 10)

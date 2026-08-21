@@ -137,10 +137,16 @@ class VCRank(commands.Cog, DatabaseBase):
         await self.process_text_data(message.author)
 
     async def process_text_data(self, member):
+        # psycopg2 は同期なので、接続・更新をそのまま await 無しで走らせると
+        # イベントループが数百msブロックされ、Interaction の3秒応答期限に間に合わなくなる。
+        # （症状: 404 Unknown interaction 10062）。DB処理はスレッドへ逃がす。
+        await asyncio.to_thread(self._process_text_data_sync, member.id, member.display_name)
+
+    def _process_text_data_sync(self, user_id: int, display_name: str):
         conn = self.get_db()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            cur.execute("SELECT text_count, text_rank FROM users WHERE user_id = %s", (member.id,))
+            cur.execute("SELECT text_count, text_rank FROM users WHERE user_id = %s", (user_id,))
             row = cur.fetchone()
             old_count = row['text_count'] if row else 0
             old_rank = row['text_rank'] if row else 0
@@ -157,7 +163,7 @@ class VCRank(commands.Cog, DatabaseBase):
                     text_count = EXCLUDED.text_count,
                     text_rank = EXCLUDED.text_rank,
                     user_name = EXCLUDED.user_name
-            """, (member.id, new_count, new_rank, member.display_name))
+            """, (user_id, new_count, new_rank, display_name))
             conn.commit()
         except Exception as e:
             logger.error(f"Error in VCRank(text): {e}")
@@ -201,12 +207,17 @@ class VCRank(commands.Cog, DatabaseBase):
             await self.process_vc_data(member, whole)
 
     async def process_vc_data(self, member, minutes):
-        """DB更新、報酬付与、ランク判定をまとめて処理"""
+        """DB更新、報酬付与、ランク判定をまとめて処理（DBは同期なのでスレッドで）"""
+        await asyncio.to_thread(
+            self._process_vc_data_sync, member.id, member.display_name, minutes
+        )
+
+    def _process_vc_data_sync(self, user_id: int, display_name: str, minutes: int):
         conn = self.get_db()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
         try:
-            cur.execute("SELECT vc_minutes_total, rank FROM users WHERE user_id = %s", (member.id,))
+            cur.execute("SELECT vc_minutes_total, rank FROM users WHERE user_id = %s", (user_id,))
             row = cur.fetchone()
 
             old_total = row['vc_minutes_total'] if row else 0
@@ -231,7 +242,7 @@ class VCRank(commands.Cog, DatabaseBase):
                     rank = EXCLUDED.rank,
                     mp_tickets = users.mp_tickets + EXCLUDED.mp_tickets,
                     user_name = EXCLUDED.user_name
-            """, (member.id, new_total, new_rank, tickets_gained, member.display_name))
+            """, (user_id, new_total, new_rank, tickets_gained, display_name))
 
             # 日別の内訳も残す（直近1週間などの期間集計用）
             cur.execute("""
@@ -239,7 +250,7 @@ class VCRank(commands.Cog, DatabaseBase):
                 VALUES (%s, %s, %s)
                 ON CONFLICT (user_id, day) DO UPDATE SET
                     minutes = vc_daily.minutes + EXCLUDED.minutes
-            """, (member.id, date.today(), minutes))
+            """, (user_id, date.today(), minutes))
 
             conn.commit()
 
@@ -270,26 +281,36 @@ class VCRank(commands.Cog, DatabaseBase):
             logger.error(f"直近{days}日のVC時間の取得に失敗しました: {e}")
             return None
 
+    def _fetch_rank_row(self, user_id: int) -> tuple[int, int, int, int, int]:
+        """ランクカード用の集計値を取る。(VC分, VCランク, 投稿数, テキストランク, 順位)"""
+        conn = self.get_db()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT vc_minutes_total, rank, text_count, text_rank FROM users WHERE user_id = %s",
+                    (user_id,),
+                )
+                row = cur.fetchone()
+                saved_total = row['vc_minutes_total'] if row else 0
+                current_rank = row['rank'] if row else 0
+                text_count = row['text_count'] if row else 0
+                text_level = row['text_rank'] if row else 0
+                # リーダーボード順位（自分より累計時間が多い人数 + 1）
+                cur.execute("SELECT COUNT(*) AS c FROM users WHERE vc_minutes_total > %s", (saved_total,))
+                rank_pos = (cur.fetchone()['c'] or 0) + 1
+        finally:
+            conn.close()
+        return saved_total, current_rank, text_count, text_level, rank_pos
+
     @app_commands.command(name="rank", description="現在のVCランクと滞在時間を確認します")
     async def vc_status(self, interaction: discord.Interaction):
         await interaction.response.defer()
         user_id = interaction.user.id
 
-        conn = self.get_db()
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                "SELECT vc_minutes_total, rank, text_count, text_rank FROM users WHERE user_id = %s",
-                (user_id,),
-            )
-            row = cur.fetchone()
-            saved_total = row['vc_minutes_total'] if row else 0
-            current_rank = row['rank'] if row else 0
-            text_count = row['text_count'] if row else 0
-            text_level = row['text_rank'] if row else 0
-            # リーダーボード順位（自分より累計時間が多い人数 + 1）
-            cur.execute("SELECT COUNT(*) AS c FROM users WHERE vc_minutes_total > %s", (saved_total,))
-            rank_pos = (cur.fetchone()['c'] or 0) + 1
-        conn.close()
+        # DBは同期なのでスレッドへ（イベントループを止めない）
+        saved_total, current_rank, text_count, text_level, rank_pos = await asyncio.to_thread(
+            self._fetch_rank_row, user_id
+        )
 
         # セッション時間の計算（次の自動更新までの端数分）
         session_min = 0

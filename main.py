@@ -6,6 +6,7 @@ import discord
 from discord.ext import commands
 
 from core.config import BASE_DIR, MY_GUILD_ID, TOKEN
+from core.db_base import close_pool
 from core.log_to_discord import setup_logging
 from server import server_thread
 
@@ -103,4 +104,8 @@ if __name__ == "__main__":
     bot = DiscordBot()
     # log_handler=None にして、discord.py 側のロギング初期化で
     # 自前のハンドラ（setup_logging）が上書きされないようにする
-    bot.run(TOKEN, log_handler=None)
+    try:
+        bot.run(TOKEN, log_handler=None)
+    finally:
+        # 終了時にプールの接続を解放する
+        close_pool()

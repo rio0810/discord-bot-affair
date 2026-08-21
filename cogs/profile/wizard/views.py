@@ -47,12 +47,13 @@ class RadioStepModal(discord.ui.Modal):
             self.add_item(discord.ui.Label(text=text, component=radio))
 
     async def on_submit(self, interaction: discord.Interaction):
-        for label, radio in self.radios.items():
-            if radio.value is not None:
-                self.wizard.answers[label] = radio.value
-        self.wizard.index += 1
-        self.wizard._rebuild()
-        await self.wizard._refresh(interaction)
+        def mutate():
+            for label, radio in self.radios.items():
+                if radio.value is not None:
+                    self.wizard.answers[label] = radio.value
+            self.wizard.index += 1
+
+        await self.wizard._apply(interaction, mutate)
 
 
 # ---------------------------------------------------------------------- #
@@ -152,10 +153,11 @@ class ProfileWizardView(discord.ui.View):
             )
 
             async def on_select(interaction: discord.Interaction, s=select):
-                self.answers[label] = s.values[0]
-                self.index += 1
-                self._rebuild()
-                await self._refresh(interaction)
+                def mutate():
+                    self.answers[label] = s.values[0]
+                    self.index += 1
+
+                await self._apply(interaction, mutate)
 
             select.callback = on_select
             self.add_item(select)
@@ -165,10 +167,11 @@ class ProfileWizardView(discord.ui.View):
             skip_btn = discord.ui.Button(label="スキップ", style=discord.ButtonStyle.gray, emoji="⏭️")
 
             async def on_skip(interaction: discord.Interaction):
-                self.answers.pop(label, None)
-                self.index += 1
-                self._rebuild()
-                await self._refresh(interaction)
+                def mutate():
+                    self.answers.pop(label, None)
+                    self.index += 1
+
+                await self._apply(interaction, mutate)
 
             skip_btn.callback = on_skip
             self.add_item(skip_btn)
@@ -187,15 +190,16 @@ class ProfileWizardView(discord.ui.View):
             )
 
             async def on_major(interaction: discord.Interaction, s=select):
-                choice = s.values[0]
-                if choice == _MBTI_NONE:
-                    # 「やっていない」は大項目の選択で確定して次へ
-                    self.answers["MBTI"] = _MBTI_NONE
-                    self.index += 1
-                else:
-                    self.mbti_group = choice
-                self._rebuild()
-                await self._refresh(interaction)
+                def mutate():
+                    choice = s.values[0]
+                    if choice == _MBTI_NONE:
+                        # 「やっていない」は大項目の選択で確定して次へ
+                        self.answers["MBTI"] = _MBTI_NONE
+                        self.index += 1
+                    else:
+                        self.mbti_group = choice
+
+                await self._apply(interaction, mutate)
 
             select.callback = on_major
             self.add_item(select)
@@ -213,11 +217,12 @@ class ProfileWizardView(discord.ui.View):
         )
 
         async def on_type(interaction: discord.Interaction, s=select):
-            self.answers["MBTI"] = s.values[0]
-            self.mbti_group = None
-            self.index += 1
-            self._rebuild()
-            await self._refresh(interaction)
+            def mutate():
+                self.answers["MBTI"] = s.values[0]
+                self.mbti_group = None
+                self.index += 1
+
+            await self._apply(interaction, mutate)
 
         select.callback = on_type
         self.add_item(select)
@@ -226,25 +231,52 @@ class ProfileWizardView(discord.ui.View):
         back_btn = discord.ui.Button(label="大項目に戻る", style=discord.ButtonStyle.gray, emoji="◀")
 
         async def back_to_major(interaction: discord.Interaction):
-            self.mbti_group = None
-            self._rebuild()
-            await self._refresh(interaction)
+            def mutate():
+                self.mbti_group = None
+
+            await self._apply(interaction, mutate)
 
         back_btn.callback = back_to_major
         self.add_item(back_btn)
 
-    async def _refresh(self, interaction: discord.Interaction):
+    async def _refresh(self, interaction: discord.Interaction) -> bool:
+        """ウィザードの表示を今の状態に更新する。更新できたら True。
+
+        Discord の応答期限（3秒）を過ぎるとトークンが無効になり 404(10062) が返る。
+        その場合は画面が前のステップのままなので、呼び出し側で状態を巻き戻す。"""
         embed = None
         if self.index >= len(self.steps):
             embed = build_profile_embed(
                 interaction.user, self.name, self.hobby, self.fav_type, self.answers, self.casual
             )
-        await interaction.response.edit_message(content=self.content, embed=embed, view=self)
+        try:
+            await interaction.response.edit_message(content=self.content, embed=embed, view=self)
+        except discord.NotFound:
+            # 応答期限切れ。ユーザーがもう一度選び直せば進めるので警告のみ
+            logger.warning("プロフィールウィザードの更新に失敗しました（応答期限切れ）")
+            return False
+        except discord.HTTPException as e:
+            logger.warning(f"プロフィールウィザードの更新に失敗しました: {e}")
+            return False
+        return True
+
+    async def _apply(self, interaction: discord.Interaction, mutate) -> None:
+        """状態を変更して画面を更新する。更新できなければ変更を巻き戻す。
+
+        巻き戻さないと、表示は前のステップのまま内部だけ進み、次の選択が
+        別の項目の答えとして記録されてしまう。"""
+        snapshot = (self.index, self.mbti_group, dict(self.answers))
+        mutate()
+        self._rebuild()
+        if not await self._refresh(interaction):
+            self.index, self.mbti_group, self.answers = snapshot[0], snapshot[1], snapshot[2]
+            self._rebuild()
 
     async def _go_back(self, interaction: discord.Interaction):
-        self.index = max(0, self.index - 1)
-        self._rebuild()
-        await self._refresh(interaction)
+        def mutate():
+            self.index = max(0, self.index - 1)
+
+        await self._apply(interaction, mutate)
 
     async def _submit(self, interaction: discord.Interaction):
         embed = build_profile_embed(
@@ -253,9 +285,13 @@ class ProfileWizardView(discord.ui.View):
 
         # まず応答（3秒以内）。以降の送信・転送は時間がかかっても良い
         self.stop()
-        await interaction.response.edit_message(
-            content="✅ プロフィールを投稿しました！", embed=None, view=None
-        )
+        try:
+            await interaction.response.edit_message(
+                content="✅ プロフィールを投稿しました！", embed=None, view=None
+            )
+        except discord.HTTPException as e:
+            # 応答期限切れなどで表示を更新できなくても、投稿処理自体は続行する
+            logger.warning(f"プロフィール投稿の完了表示に失敗しました: {e}")
 
         # 本人のチャンネルへは、コピペしやすいよう素のテキストで投稿（embed は審査用に温存）
         profile_text = build_profile_text(self.name, self.hobby, self.fav_type, self.answers, self.casual)
