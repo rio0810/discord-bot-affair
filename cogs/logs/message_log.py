@@ -8,17 +8,24 @@ from core.log_channel import send_log_embed
 
 logger = logging.getLogger(__name__)
 
-# Embed の1フィールドは1024文字まで。リンク行などの余白を見て少し余裕を持たせる
+# Embed の1フィールドは1024文字まで。コードブロックの記号ぶんの余白を見て短めにする
 MAX_FIELD_LEN = 1000
 
 
-def _clip(text: str) -> str:
+def _clip(text: str, limit: int = MAX_FIELD_LEN) -> str:
     """Embed のフィールドに収まる長さへ切り詰める。"""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "…"
+
+
+def _code_block(text: str) -> str:
+    """本文をコードブロックで囲む（メンションや装飾が効かないように）。"""
     if not text:
         return "（本文なし）"
-    if len(text) <= MAX_FIELD_LEN:
-        return text
-    return text[:MAX_FIELD_LEN] + "…"
+    # 本文中の ``` でコードブロックが閉じないようゼロ幅スペースを挟む
+    body = _clip(text).replace("```", "`​``")
+    return "```" + "\n" + body + "\n" + "```"
 
 
 class MessageLog(commands.Cog):
@@ -65,8 +72,8 @@ class MessageLog(commands.Cog):
         )
         embed.set_author(name=str(after.author), icon_url=after.author.display_avatar.url)
         embed.set_footer(text=f"ユーザーID: {after.author.id}")
-        embed.add_field(name="編集前", value=_clip(before.content), inline=False)
-        embed.add_field(name="編集後", value=_clip(after.content), inline=False)
+        embed.add_field(name="編集前", value=_code_block(before.content), inline=False)
+        embed.add_field(name="編集後", value=_code_block(after.content), inline=False)
 
         await send_log_embed(self.bot, self.log_channel_id, embed, label="メッセージログ")
 
@@ -91,11 +98,11 @@ class MessageLog(commands.Cog):
             name=str(message.author), icon_url=message.author.display_avatar.url
         )
         embed.set_footer(text=f"ユーザーID: {message.author.id}")
-        embed.add_field(name="本文", value=_clip(message.content), inline=False)
+        embed.add_field(name="本文", value=_code_block(message.content), inline=False)
         if message.attachments:
             # 添付そのものは削除済みで取得できないため、ファイル名だけ残す
             names = "\n".join(a.filename for a in message.attachments)
-            embed.add_field(name="添付ファイル", value=_clip(names), inline=False)
+            embed.add_field(name="添付ファイル", value=_code_block(names), inline=False)
 
         await send_log_embed(
             self.bot, self.log_channel_id, embed, label="メッセージ削除ログ"
