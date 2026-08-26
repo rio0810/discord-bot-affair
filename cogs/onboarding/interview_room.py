@@ -277,7 +277,7 @@ class InterviewRoomCog(AdminCogBase):
             description=(
                 "**プロフィールを記載して下さい。**\n\n"
                 "下のボタンを押してプロフィールを投稿してください。\n"
-                "録音の提出は不要です。確認し次第運営から連絡させていただきます。"
+                "確認し次第運営から連絡させていただきます。"
             ),
             colour=discord.Colour.green(),
             role_id=self.male_role_id, opposite_role_id=self.female_role_id,
