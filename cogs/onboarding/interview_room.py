@@ -25,6 +25,23 @@ INTERVIEW_TOPIC_PREFIX = "interview_room:"  # Aボタン：アピール録音用
 PROFILE_TOPIC_PREFIX = "profile_room:"      # Bボタン：プロフィール記載用
 
 
+def result_embed(description: str, *, title: str, colour: discord.Colour) -> discord.Embed:
+    """コマンド応答用の Embed。"""
+    return discord.Embed(title=title, description=description, colour=colour)
+
+
+def success_embed(description: str, *, title: str = "✅ 完了") -> discord.Embed:
+    return result_embed(description, title=title, colour=discord.Colour.green())
+
+
+def error_embed(description: str, *, title: str = "❌ エラー") -> discord.Embed:
+    return result_embed(description, title=title, colour=discord.Colour.red())
+
+
+def info_embed(description: str, *, title: str = "ℹ️ 現在の設定") -> discord.Embed:
+    return result_embed(description, title=title, colour=discord.Colour.blurple())
+
+
 class AppealPanelActions(discord.ui.ActionRow):
     """受付パネルのボタン行。custom_id は旧パネルと共通なので既設パネルも動く。"""
 
@@ -158,7 +175,14 @@ class InterviewRoomCog(AdminCogBase):
     async def set_appeal_panel(self, interaction: discord.Interaction):
         # Components V2（LayoutView）は embed / content と併用不可のため view のみ送信
         await interaction.channel.send(view=AppealPanelView(self))
-        await interaction.response.send_message("パネルを設置しました。", ephemeral=True)
+        await interaction.response.send_message(
+            embed=success_embed(
+                f"{interaction.channel.mention} にパネルを設置しました。\n"
+                f"男性の審査方式：**{MALE_MODE_LABELS[self.male_mode]}**",
+                title="✅ パネルを設置しました",
+            ),
+            ephemeral=True,
+        )
 
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
@@ -176,24 +200,42 @@ class InterviewRoomCog(AdminCogBase):
             await self.run_db(self._save_male_mode, mode.value)
         except Exception as e:
             logger.error(f"男性の審査方式の保存に失敗しました: {e}")
-            await interaction.followup.send("❌ 設定の保存に失敗しました。", ephemeral=True)
+            await interaction.followup.send(
+                embed=error_embed("設定の保存に失敗しました。しばらく待って再度お試しください。"),
+                ephemeral=True,
+            )
             return
         self.male_mode = mode.value
         logger.info(f"男性の審査方式を {MALE_MODE_LABELS[mode.value]} に変更しました（{interaction.user.id}）")
-        await interaction.followup.send(
-            f"✅ 男性の審査方式を **{MALE_MODE_LABELS[mode.value]}** に切り替えました。\n"
-            "※ 設置済みパネルの説明文は変わりません。文言も更新したい場合は "
-            "`/set_appeal_panel` で置き直してください（ボタンの動作は即座に切り替わります）。",
-            ephemeral=True,
+        embed = success_embed(
+            f"男性の審査方式を **{MALE_MODE_LABELS[mode.value]}** に切り替えました。",
+            title="✅ 審査方式を変更しました",
         )
+        embed.add_field(
+            name="設置済みパネルについて",
+            value=(
+                "ボタンの動作は即座に切り替わりますが、説明文は設置時のままです。\n"
+                "文言も更新したい場合は `/set_appeal_panel` で置き直してください。"
+            ),
+            inline=False,
+        )
+        embed.set_footer(text=f"変更者: {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
     @app_commands.command(name="male_mode", description="【管理者専用】現在の男性の審査方式を表示します")
     async def show_male_mode(self, interaction: discord.Interaction):
-        await interaction.response.send_message(
-            f"現在の男性の審査方式：**{MALE_MODE_LABELS[self.male_mode]}**", ephemeral=True
+        embed = info_embed(
+            f"男性の審査方式：**{MALE_MODE_LABELS[self.male_mode]}**",
+            title="ℹ️ 男性の審査方式",
         )
+        embed.add_field(
+            name="切り替え",
+            value="`/set_male_mode` で「録音あり（面接）」「プロフ審査のみ」を変更できます。",
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------ #
     # ボタン処理
