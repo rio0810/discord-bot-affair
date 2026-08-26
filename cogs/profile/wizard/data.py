@@ -8,6 +8,8 @@ from core import config
 INTERVIEW_TOPIC_PREFIX = "interview_room:"
 # 運営共有（障害申告）の送信先
 RECORDING_FORWARD_CHANNEL_ID = config.RECORDING_FORWARD_CHANNEL_ID
+# 性別判定用（プロフのみで審査する男性ルートの投稿先を分けるのに使う）
+MALE_ROLE_ID = config.MALE_ROLE_ID
 
 # DM・フレンド申請の可否（雑談・恋愛共通の質問）。選択に応じてロールを付与する
 DM_CRITERIA_FIELD = "DM・フレンド申請の可否"

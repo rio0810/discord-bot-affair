@@ -11,6 +11,15 @@ from cogs.onboarding.recording_score.ui import is_audio
 
 logger = logging.getLogger(__name__)
 
+# 男性の審査方式（サーバー全体の設定。bot_settings テーブルに保存する）
+MALE_MODE_AUDIO = "audio"      # 録音での面接あり
+MALE_MODE_PROFILE = "profile"  # 録音なし・プロフィールのみ
+MALE_MODE_KEY = "male_review_mode"
+MALE_MODE_LABELS = {
+    MALE_MODE_AUDIO: "録音あり（面接）",
+    MALE_MODE_PROFILE: "プロフ審査のみ",
+}
+
 # 作成したチャンネルの topic に埋め込むプレフィックス（種別・所有者の識別用）
 INTERVIEW_TOPIC_PREFIX = "interview_room:"  # Aボタン：アピール録音用
 PROFILE_TOPIC_PREFIX = "profile_room:"      # Bボタン：プロフィール記載用
@@ -25,11 +34,28 @@ class AppealPanelActions(discord.ui.ActionRow):
 
     @discord.ui.button(label="男性", style=discord.ButtonStyle.green, emoji="♂", custom_id="persistent:appeal_a")
     async def button_a(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.cog.handle_appeal(interaction)
+        # 現在の男性モード（録音あり / プロフのみ）に従う
+        await self.cog.handle_male(interaction)
 
     @discord.ui.button(label="女性", style=discord.ButtonStyle.blurple, emoji="♀", custom_id="persistent:appeal_b")
     async def button_b(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.cog.handle_profile(interaction)
+
+
+class LegacyMaleProfileView(discord.ui.View):
+    """3ボタン版パネルを設置済みの場合に、旧「男性（プロフ審査のみ）」ボタンを
+    受け止めるための永続ビュー。押されたら現在のモードに従う。"""
+
+    def __init__(self, cog: "InterviewRoomCog"):
+        super().__init__(timeout=None)
+        self.cog = cog
+
+    @discord.ui.button(
+        label="男性（プロフ審査のみ）", style=discord.ButtonStyle.gray, emoji="📝",
+        custom_id="persistent:appeal_c",
+    )
+    async def button_c(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog.handle_male(interaction)
 
 
 class AppealPanelView(discord.ui.LayoutView):
@@ -37,13 +63,18 @@ class AppealPanelView(discord.ui.LayoutView):
 
     def __init__(self, cog: "InterviewRoomCog"):
         super().__init__(timeout=None)
+        male_note = (
+            "🎤 **男性**：録音での面接あり"
+            if cog.male_mode == MALE_MODE_AUDIO
+            else "📝 **男性**：録音なし・プロフィールのみで審査"
+        )
         container = discord.ui.Container(accent_colour=discord.Colour.blurple())
         container.add_item(discord.ui.TextDisplay("## 📮 面接・案内パネル"))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
         container.add_item(
             discord.ui.TextDisplay(
                 "下のボタンを押すと、あなた専用のチャンネルが作成されます。\n\n"
-                "🎤 **男性**：録音での面接あり\n"
+                f"{male_note}\n"
                 "📝 **女性**：プロフィール審査のみ"
             )
         )
@@ -53,24 +84,70 @@ class AppealPanelView(discord.ui.LayoutView):
         self.add_item(container)
 
 
-class InterviewRoomCog(commands.Cog):
+class InterviewRoomCog(AdminCogBase):
     """コマンドで A/B ボタンのパネルを設置し、
-    A：アピール録音提出用チャンネル（投稿音声は管理者チャンネルへ転送）、
-    B：プロフィール記載用チャンネル、を押した人ごとに作成する。"""
+    A：男性（現在のモードに応じて録音面接 or プロフのみ）、
+    B：プロフィール記載用チャンネル、を押した人ごとに作成する。
+
+    男性の審査方式は `/set_male_mode` でサーバー全体を切り替え、
+    bot_settings テーブルに保存するので再起動しても維持される。"""
 
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
+        super().__init__(bot)
         self.admin_role_id = config.ADMIN_ROLE_ID
         self.male_role_id = config.MALE_ROLE_ID
         self.female_role_id = config.FEMALE_ROLE_ID
         self.category_id = config.INTERVIEW_ROOM_CATEGORY_ID
         # 録音の転送先（未設定なら転送は行われない）
         self.forward_channel_id = config.RECORDING_FORWARD_CHANNEL_ID
+        # 男性の審査方式（DBから読み込むまでは従来どおり録音あり）
+        self.male_mode = MALE_MODE_AUDIO
 
     async def cog_load(self):
+        await self.run_db(self._ensure_settings_table)
+        self.male_mode = await self.run_db(self._load_male_mode)
+        logger.info(f"男性の審査方式: {MALE_MODE_LABELS[self.male_mode]}")
         # 再起動後もボタンが反応するよう永続ビューを登録
         self.bot.add_view(AppealPanelView(self))
+        self.bot.add_view(LegacyMaleProfileView(self))
         self.bot.add_view(ProfileStartView())
+
+    # ------------------------------------------------------------------ #
+    # 男性の審査方式（サーバー全体の設定）
+    # ------------------------------------------------------------------ #
+    def _ensure_settings_table(self):
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS bot_settings (
+                            key TEXT PRIMARY KEY,
+                            value TEXT NOT NULL
+                        )
+                    """)
+        except Exception as e:
+            logger.error(f"bot_settings の準備に失敗しました: {e}")
+
+    def _load_male_mode(self) -> str:
+        """保存済みの審査方式を読む。読めなければ従来どおり録音あり。"""
+        try:
+            with self.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT value FROM bot_settings WHERE key = %s", (MALE_MODE_KEY,))
+                    row = cur.fetchone()
+        except Exception as e:
+            logger.error(f"男性の審査方式の読み込みに失敗しました: {e}")
+            return MALE_MODE_AUDIO
+        value = row[0] if row else None
+        return value if value in MALE_MODE_LABELS else MALE_MODE_AUDIO
+
+    def _save_male_mode(self, mode: str):
+        with self.get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO bot_settings (key, value) VALUES (%s, %s)
+                    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                """, (MALE_MODE_KEY, mode))
 
     # ------------------------------------------------------------------ #
     # パネル設置コマンド
@@ -83,9 +160,51 @@ class InterviewRoomCog(commands.Cog):
         await interaction.channel.send(view=AppealPanelView(self))
         await interaction.response.send_message("パネルを設置しました。", ephemeral=True)
 
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
+    @app_commands.command(
+        name="set_male_mode", description="【管理者専用】男性の審査方式（録音あり / プロフのみ）を切り替えます"
+    )
+    @app_commands.describe(mode="男性がどの方法で審査を受けるか")
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="録音あり（面接）", value=MALE_MODE_AUDIO),
+        app_commands.Choice(name="プロフ審査のみ", value=MALE_MODE_PROFILE),
+    ])
+    async def set_male_mode(self, interaction: discord.Interaction, mode: app_commands.Choice[str]):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await self.run_db(self._save_male_mode, mode.value)
+        except Exception as e:
+            logger.error(f"男性の審査方式の保存に失敗しました: {e}")
+            await interaction.followup.send("❌ 設定の保存に失敗しました。", ephemeral=True)
+            return
+        self.male_mode = mode.value
+        logger.info(f"男性の審査方式を {MALE_MODE_LABELS[mode.value]} に変更しました（{interaction.user.id}）")
+        await interaction.followup.send(
+            f"✅ 男性の審査方式を **{MALE_MODE_LABELS[mode.value]}** に切り替えました。\n"
+            "※ 設置済みパネルの説明文は変わりません。文言も更新したい場合は "
+            "`/set_appeal_panel` で置き直してください（ボタンの動作は即座に切り替わります）。",
+            ephemeral=True,
+        )
+
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
+    @app_commands.command(name="male_mode", description="【管理者専用】現在の男性の審査方式を表示します")
+    async def show_male_mode(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            f"現在の男性の審査方式：**{MALE_MODE_LABELS[self.male_mode]}**", ephemeral=True
+        )
+
     # ------------------------------------------------------------------ #
     # ボタン処理
     # ------------------------------------------------------------------ #
+    async def handle_male(self, interaction: discord.Interaction):
+        """男性ボタン。現在のモードに応じて録音面接 or プロフのみへ振り分ける。"""
+        if self.male_mode == MALE_MODE_PROFILE:
+            await self.handle_male_profile(interaction)
+        else:
+            await self.handle_appeal(interaction)
+
     async def handle_appeal(self, interaction: discord.Interaction):
         await self._handle_button(
             interaction, topic_prefix=INTERVIEW_TOPIC_PREFIX, name_emoji="🎤",
@@ -103,6 +222,24 @@ class InterviewRoomCog(commands.Cog):
             ),
             colour=discord.Colour.green(),
             role_id=self.male_role_id, opposite_role_id=self.female_role_id,
+            conflict_prefixes=(PROFILE_TOPIC_PREFIX,),
+        )
+
+    async def handle_male_profile(self, interaction: discord.Interaction):
+        """男性で録音なし・プロフィールのみで審査を受けるルート。
+        チャンネル種別はプロフィール用（PROFILE_TOPIC_PREFIX）にするので、
+        ウィザードは録音を待たずそのまま審査へ回す（投稿先は男性フォーラム）。"""
+        await self._handle_button(
+            interaction, topic_prefix=PROFILE_TOPIC_PREFIX, name_emoji="📝",
+            title="📝 プロフィールの記載",
+            description=(
+                "**プロフィールを記載して下さい。**\n\n"
+                "下のボタンを押してプロフィールを投稿してください。\n"
+                "録音の提出は不要です。確認し次第運営から連絡させていただきます。"
+            ),
+            colour=discord.Colour.green(),
+            role_id=self.male_role_id, opposite_role_id=self.female_role_id,
+            conflict_prefixes=(INTERVIEW_TOPIC_PREFIX,),
         )
 
     async def handle_profile(self, interaction: discord.Interaction):
@@ -129,6 +266,7 @@ class InterviewRoomCog(commands.Cog):
         colour: discord.Colour,
         role_id: int = 0,
         opposite_role_id: int = 0,
+        conflict_prefixes: tuple[str, ...] = (),
     ):
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
@@ -160,6 +298,17 @@ class InterviewRoomCog(commands.Cog):
         if existing is not None:
             await interaction.followup.send(f"既にあなた用の {existing.mention} があります。", ephemeral=True)
             return
+
+        # 別ルート（面接／プロフのみ）で既に受付済みなら二重提出になるので弾く
+        for prefix in conflict_prefixes:
+            other = discord.utils.get(guild.text_channels, topic=f"{prefix}{user.id}")
+            if other is not None:
+                await interaction.followup.send(
+                    f"❌ 既に別の方法で受付済みです（{other.mention}）。"
+                    "変更したい場合は運営にご連絡ください。",
+                    ephemeral=True,
+                )
+                return
 
         channel = await self._create_personal_channel(guild, user, topic_prefix, name_emoji)
         if channel is None:

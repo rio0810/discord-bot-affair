@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 _pool: psycopg2_pool.ThreadedConnectionPool | None = None
 _pool_lock = threading.Lock()
 
+# 借りた接続が死んでいたときに張り直す回数
+_CHECKOUT_RETRIES = 3
+
 # 接続が張りっぱなしで切られていた場合に気付けるようにする（Railway等の idle 切断対策）
 _KEEPALIVE_KWARGS = {
     "keepalives": 1,
@@ -109,18 +112,42 @@ class PooledConnection:
                 pass
 
 
+def _ping(conn) -> tuple[bool, Exception | None]:
+    """接続が生きているか軽いクエリで確かめる。(生存, 失敗理由) を返す。"""
+    if conn.closed:
+        return False, None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        # 疎通確認で開いたトランザクションは閉じておく
+        conn.rollback()
+        return True, None
+    except psycopg2.Error as e:
+        return False, e
+
+
 class DatabaseBase:
     def __init__(self):
         self.db_config = dict(DB_CONFIG)
 
     def get_db(self) -> PooledConnection:
-        """プールから接続を借りる。使い終わったら close()（または with で自動返却）。"""
-        conn = _get_pool().getconn()
-        if conn.closed:
-            # 切断済みの接続を掴んだら破棄して張り直す
-            _get_pool().putconn(conn, close=True)
-            conn = _get_pool().getconn()
-        return PooledConnection(conn)
+        """プールから生きている接続を借りる。使い終わったら close()（または with で自動返却）。
+
+        サーバ側の idle タイムアウトや再起動で切られた接続は、こちらから使うまで
+        切断に気付けない（`conn.closed` は 0 のまま）。借りる時に SELECT 1 で
+        疎通確認し、死んでいれば捨てて張り直す。"""
+        pool = _get_pool()
+        last_error: Exception | None = None
+        for _ in range(_CHECKOUT_RETRIES):
+            conn = pool.getconn()
+            alive, error = _ping(conn)
+            if alive:
+                return PooledConnection(conn)
+            last_error = error
+            # 死んだ接続はプールから取り除く（close=True で次回は新規接続になる）
+            pool.putconn(conn, close=True)
+            logger.warning(f"切断されたDB接続を破棄して張り直します: {error}")
+        raise last_error or psycopg2.OperationalError("DB接続を取得できませんでした")
 
     @staticmethod
     async def run_db(func, *args, **kwargs):

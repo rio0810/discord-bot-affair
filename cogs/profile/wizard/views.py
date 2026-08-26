@@ -8,6 +8,7 @@ from .data import (
     DM_CRITERIA_FIELD,
     FIELD_OPTIONS,
     INTERVIEW_TOPIC_PREFIX,
+    MALE_ROLE_ID,
     MBTI_GROUPS,
     MBTI_MAJOR_OPTIONS,
     NAMED_CHUNKS,
@@ -60,15 +61,18 @@ class RadioStepModal(discord.ui.Modal):
 # 選択ウィザード（ephemeral・1ステップずつ進む）
 # ---------------------------------------------------------------------- #
 class ProfileWizardView(discord.ui.View):
-    def __init__(self, name: str, hobby: str, fav_type: str, disability="", is_male=False, casual=False):
+    def __init__(self, name: str, hobby: str, fav_type: str, disability="",
+                 is_male=False, casual=False, wait_audio=False):
         super().__init__(timeout=900)
         self.name = name
         self.hobby = hobby
         self.fav_type = fav_type
         # 障害・ハンデの申告（公開せず運営のみで共有）
         self.disability = disability
-        # 男性なら録音との待ち合わせ（録音投稿＋プロフ作成で採点パネルを出す）
+        # 男性かどうか（審査の投稿先フォーラムの振り分けに使う）
         self.is_male = is_male
+        # 録音との待ち合わせをするか（面接チャンネル経由のときだけ True）
+        self.wait_audio = wait_audio
         # 雑談ロールなら短縮プロフ（名前/年齢/血液型/居住地/趣味/MBTI）
         self.casual = casual
         self.steps = CASUAL_STEPS if casual else STEPS
@@ -307,12 +311,12 @@ class ProfileWizardView(discord.ui.View):
         if cog is not None:
             # 作成済みとして記録（2回目の作成をブロック）
             cog.mark_profile_created(interaction.user.id)
-            if self.is_male:
-                # 男性は録音との待ち合わせ（録音が既にあれば審査へ、無ければ待機）
+            if self.wait_audio:
+                # 面接ルートは録音との待ち合わせ（録音が既にあれば審査へ、無ければ待機）
                 await cog.on_profile_created(interaction, embed)
             else:
-                # 女性は音声不要。プロフィールのみで即審査へ
-                await cog.on_profile_only(interaction, embed)
+                # 音声不要のルート。プロフィールのみで即審査へ（男女で投稿先を分ける）
+                await cog.on_profile_only(interaction, embed, kind="m" if self.is_male else "f")
 
         # 1週間レビュー用にプロフィール embed を保存（新人ロール昇格審査で再掲する）
         nrc = interaction.client.get_cog("NewcomerReview")
@@ -355,10 +359,11 @@ class ProfileModal(discord.ui.Modal, title="プロフィール作成"):
         ),
     )
 
-    def __init__(self, is_male: bool = False, casual: bool = False):
+    def __init__(self, is_male: bool = False, casual: bool = False, wait_audio: bool = False):
         super().__init__()
         self.is_male = is_male
         self.casual = casual
+        self.wait_audio = wait_audio
         # 雑談ロールは「好きなタイプ」を尋ねない
         if casual:
             self.remove_item(self.fav_type)
@@ -369,6 +374,7 @@ class ProfileModal(discord.ui.Modal, title="プロフィール作成"):
         view = ProfileWizardView(
             str(self.name), str(self.hobby), fav,
             disability=str(self.disability).strip(), is_male=self.is_male, casual=self.casual,
+            wait_audio=self.wait_audio,
         )
         await interaction.response.send_message(content=view.content, view=view, ephemeral=True)
 
@@ -402,20 +408,25 @@ class ProfileTypeChoiceView(discord.ui.View):
     """作成ボタンの後に「雑談 / 恋愛」を選ばせる（ephemeral）。
     雑談 → 短縮プロフィール、恋愛 → 通常プロフィール。"""
 
-    def __init__(self, is_male: bool):
+    def __init__(self, is_male: bool, wait_audio: bool = False):
         super().__init__(timeout=300)
         self.is_male = is_male
+        self.wait_audio = wait_audio
 
     @discord.ui.button(label="雑談", style=discord.ButtonStyle.gray, emoji="💬")
     async def casual_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         # ロール付与はここで実施（モーダル表示を遅らせないよう背景で処理）
         asyncio.create_task(_apply_choice_role(interaction.guild, interaction.user, casual=True))
-        await interaction.response.send_modal(ProfileModal(is_male=self.is_male, casual=True))
+        await interaction.response.send_modal(
+            ProfileModal(is_male=self.is_male, casual=True, wait_audio=self.wait_audio)
+        )
 
     @discord.ui.button(label="恋愛", style=discord.ButtonStyle.red, emoji="❤️")
     async def romance_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         asyncio.create_task(_apply_choice_role(interaction.guild, interaction.user, casual=False))
-        await interaction.response.send_modal(ProfileModal(is_male=self.is_male, casual=False))
+        await interaction.response.send_modal(
+            ProfileModal(is_male=self.is_male, casual=False, wait_audio=self.wait_audio)
+        )
 
 
 async def _start_profile_wizard(interaction: discord.Interaction):
@@ -436,8 +447,14 @@ async def _start_profile_wizard(interaction: discord.Interaction):
             ephemeral=True,
         )
         return
-    # 男性（面接）チャンネルなら録音ファイルの提出欄を出す
-    is_male = topic.startswith(INTERVIEW_TOPIC_PREFIX)
+    # 面接チャンネル（録音あり）なら、録音が揃うまで審査へ回さず待ち合わせる
+    wait_audio = topic.startswith(INTERVIEW_TOPIC_PREFIX)
+    # 性別は面接ルートか、男性ロールの有無で判定（プロフのみの男性ルート用）
+    is_male = wait_audio or (
+        MALE_ROLE_ID != 0
+        and isinstance(interaction.user, discord.Member)
+        and interaction.user.get_role(MALE_ROLE_ID) is not None
+    )
     # 先に「雑談 / 恋愛」を選ばせ、雑談なら短縮プロフィールにする
     await interaction.response.send_message(
         "このサーバーでの目的を選んでください：\n"
@@ -445,7 +462,7 @@ async def _start_profile_wizard(interaction: discord.Interaction):
         "❤️ **恋愛**：雑談しつつ恋愛も楽しみたい方\n\n"
         "⚠️ **雑談** を選ぶと **雑談ロール** が付与され、"
         "**個通部屋が使えなくなります**のでご注意ください。",
-        view=ProfileTypeChoiceView(is_male=is_male),
+        view=ProfileTypeChoiceView(is_male=is_male, wait_audio=wait_audio),
         ephemeral=True,
     )
 

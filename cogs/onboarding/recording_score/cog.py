@@ -285,15 +285,20 @@ class RecordingScore(commands.Cog, RecordingDBMixin):
             except (discord.Forbidden, discord.HTTPException):
                 pass
 
-    async def on_profile_only(self, interaction: discord.Interaction, embed: discord.Embed):
-        """女性など音声不要の審査。プロフィールのみで即座に審査へ送る。"""
-        fch = self._forward_channel("f")
+    async def on_profile_only(
+        self, interaction: discord.Interaction, embed: discord.Embed, kind: str = "f"
+    ):
+        """音声不要の審査。プロフィールのみで即座に審査へ送る。
+
+        kind は投稿先フォーラムの振り分け（"m"=男性 / "f"=女性）。女性のほか、
+        プロフ審査のみの男性ルートからも呼ばれる。"""
+        fch = self._forward_channel(kind)
         if fch is None:
             return
         result = await forward_recording(
-            fch, interaction.user, [], embed=embed, source_channel=interaction.channel, kind="f",
+            fch, interaction.user, [], embed=embed, source_channel=interaction.channel, kind=kind,
         )
-        self._register_review(result, interaction.user.id, "f")
+        self._register_review(result, interaction.user.id, kind)
         self._mark_done(interaction.user.id)
         try:
             await interaction.channel.send(embed=submitted_embed())
