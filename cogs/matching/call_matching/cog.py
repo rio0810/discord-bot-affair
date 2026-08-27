@@ -169,6 +169,146 @@ class CallMatchingCog(commands.Cog, CallDBMixin):
         await interaction.followup.send(embed=embed)
 
     # ------------------------------------------------------------------ #
+    # 個通上限の変更（管理者専用）
+    # ------------------------------------------------------------------ #
+    def _limit_embed(self, member: discord.Member, guild: discord.Guild, *, title: str,
+                     colour: discord.Colour) -> discord.Embed:
+        """変更後の上限・現在の部屋数をまとめた Embed を作る。"""
+        personal = self.get_room_limit(member.id)
+        default = self.default_max_rooms(member)
+        effective = personal if personal is not None else default
+        embed = discord.Embed(
+            title=title,
+            description=f"対象：{member.mention}",
+            colour=colour,
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.add_field(
+            name="現在の上限",
+            value=f"**{effective}件**" + ("（個別設定）" if personal is not None else "（ロール既定）"),
+            inline=True,
+        )
+        embed.add_field(name="ロール既定", value=f"{default}件", inline=True)
+        embed.add_field(name="保有中の個通部屋", value=f"{self.count_rooms(guild, member.id)}件", inline=True)
+        embed.set_thumbnail(url=member.display_avatar.url)
+        return embed
+
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
+    @app_commands.command(
+        name="call_limit_set", description="【管理者専用】指定メンバーの個通部屋の同時保有上限を変更します"
+    )
+    @app_commands.describe(member="上限を変更するメンバー", max_rooms="同時に持てる個通部屋の数（1〜20）")
+    async def call_limit_set(
+        self, interaction: discord.Interaction, member: discord.Member,
+        max_rooms: app_commands.Range[int, 1, 20],
+    ):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await self.run_db(self.set_room_limit, member.id, max_rooms)
+        except Exception as e:
+            logger.error(f"個通上限の変更に失敗しました ({member.id}): {e}")
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    title="❌ エラー", description="上限の保存に失敗しました。",
+                    colour=discord.Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        logger.info(
+            f"個通上限を変更: {member.id} -> {max_rooms}件（実行者 {interaction.user.id}）"
+        )
+        embed = self._limit_embed(
+            member, interaction.guild,
+            title="✅ 個通上限を変更しました", colour=discord.Colour.green(),
+        )
+        embed.set_footer(text=f"実行者: {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
+    @app_commands.command(
+        name="call_limit_reset", description="【管理者専用】指定メンバーの個通上限をロール既定に戻します"
+    )
+    @app_commands.describe(member="個別設定を解除するメンバー")
+    async def call_limit_reset(self, interaction: discord.Interaction, member: discord.Member):
+        await interaction.response.defer(ephemeral=True)
+        if self.get_room_limit(member.id) is None:
+            await interaction.followup.send(
+                embed=self._limit_embed(
+                    member, interaction.guild,
+                    title="ℹ️ 個別設定はありません", colour=discord.Colour.blurple(),
+                ),
+                ephemeral=True,
+            )
+            return
+        try:
+            await self.run_db(self.clear_room_limit, member.id)
+        except Exception as e:
+            logger.error(f"個通上限の解除に失敗しました ({member.id}): {e}")
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    title="❌ エラー", description="個別設定の解除に失敗しました。",
+                    colour=discord.Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        logger.info(f"個通上限の個別設定を解除: {member.id}（実行者 {interaction.user.id}）")
+        embed = self._limit_embed(
+            member, interaction.guild,
+            title="✅ 個別設定を解除しました", colour=discord.Colour.green(),
+        )
+        embed.set_footer(text=f"実行者: {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_any_role(AdminCogBase.ADMIN_ROLE_ID)
+    @app_commands.command(
+        name="call_limit_list", description="【管理者専用】個通上限を個別設定しているメンバーを一覧表示します"
+    )
+    async def call_limit_list(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        limits = await self.run_db(self.get_all_room_limits)
+        if not limits:
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    title="📜 個通上限の個別設定",
+                    description="個別設定されているメンバーはいません。",
+                    colour=discord.Colour.dark_gray(),
+                ),
+                ephemeral=True,
+            )
+            return
+
+        guild = interaction.guild
+        lines = []
+        for uid, limit in sorted(limits.items(), key=lambda kv: kv[1]):
+            m = guild.get_member(uid)
+            name = f"{m.display_name}（@{m.name}）" if m else f"退出済み（{uid}）"
+            lines.append(f"・**{name}** … {limit}件")
+
+        description = ""
+        omitted = 0
+        for i, line in enumerate(lines):
+            if len(description) + len(line) + 1 > 3900:
+                omitted = len(lines) - i
+                break
+            description += line + "\n"
+        if omitted:
+            description += f"…他 **{omitted}名**"
+
+        embed = discord.Embed(
+            title="📜 個通上限の個別設定",
+            description=description,
+            colour=discord.Colour.dark_gray(),
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.set_footer(text=f"合計 {len(limits)} 名")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # ------------------------------------------------------------------ #
     # 募集開始（男性⇄女性）
     # ------------------------------------------------------------------ #
     def _is_newcomer(self, member: discord.Member) -> bool:
