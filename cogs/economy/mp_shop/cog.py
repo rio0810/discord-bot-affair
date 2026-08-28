@@ -109,7 +109,7 @@ class MPShop(commands.Cog, MPShopDBMixin):
                 "**チケットを確認** で所持枚数を確認できます。\n"
                 "**商品を選ぶ** から交換できます。\n\n"
                 f"🔄 お試し個通のリセット … **{TRIAL_RESET_COST}枚**\n"
-                f"📝 個人専用テキストチャット作成 … **{TEXT_CHANNEL_COST}枚**（作成時に名前と閲覧ロールを指定）\n"
+                f"📝 個人専用テキストチャット作成 … **{TEXT_CHANNEL_COST}枚**（作成時に名前と閲覧ロール・閲覧ユーザーを指定）\n"
                 f"🌈 カラーロール作成 … **{COLOR_ROLE_COST}枚**（グラデーション/ホログラフィック・男=青/女=赤ベース）\n"
                 f"📷 雰囲気写真の閲覧権 … **{MOOD_PHOTO_COST}枚**（{MOOD_PHOTO_HOURS}時間以内に画像投稿しないと没収）\n"
                 f"😀 サーバー絵文字を追加 … **{EMOJI_COST}枚**（画像をアップロードして絵文字化）"
@@ -384,7 +384,15 @@ class MPShop(commands.Cog, MPShopDBMixin):
             f"✅ お試し個通の誘い履歴をリセットしました。（-{TRIAL_RESET_COST}枚）", ephemeral=True
         )
 
-    async def redeem_text_channel(self, interaction: discord.Interaction, name: str, roles: list):
+    async def redeem_text_channel(
+        self, interaction: discord.Interaction, name: str, roles: list, members: list | None = None
+    ):
+        viewers = [m for m in (members or []) if m.id != interaction.user.id]
+        if not roles and not viewers:
+            await interaction.response.send_message(
+                "❌ 閲覧できるロールかユーザーを1つ以上指定してください。", ephemeral=True
+            )
+            return
         # 作成直前の再チェック（1人1つまで）
         existing = self._existing_text_channel(interaction.guild, interaction.user.id)
         if existing is not None:
@@ -416,6 +424,8 @@ class MPShop(commands.Cog, MPShopDBMixin):
             overwrites[admin_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
         for role in roles:
             overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+        for target in viewers:
+            overwrites[target] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
 
         try:
             channel = await guild.create_text_channel(
@@ -433,8 +443,9 @@ class MPShop(commands.Cog, MPShopDBMixin):
         self._save_text_channel(member.id, channel.id)
 
         role_txt = "、".join(r.name for r in roles) if roles else "なし"
+        viewer_txt = "、".join(m.display_name for m in viewers) if viewers else "なし"
         await interaction.response.send_message(
-            f"✅ {channel.mention} を作成しました！（-{TEXT_CHANNEL_COST}枚）\n閲覧ロール：{role_txt}",
+            f"✅ {channel.mention} を作成しました！（-{TEXT_CHANNEL_COST}枚）\n閲覧ロール：{role_txt}\n閲覧ユーザー：{viewer_txt}",
             ephemeral=True,
         )
 

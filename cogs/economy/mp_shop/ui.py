@@ -29,16 +29,21 @@ class TextChannelModal(discord.ui.Modal, title="個人専用テキストチャ�
         if role_options:
             self.roles = discord.ui.CheckboxGroup(
                 options=[discord.CheckboxGroupOption(label=name, value=str(rid)) for rid, name in role_options],
-                min_values=1,
+                min_values=0,
                 max_values=len(role_options),
-                required=True,
+                required=False,
             )
-            self.add_item(discord.ui.Label(text="閲覧できるロール（男性・女性から1つ以上必須）", component=self.roles))
+            self.add_item(discord.ui.Label(text="閲覧できるロール（男性・女性／任意）", component=self.roles))
+        # ロールとは別に、個別のユーザーも閲覧者として指定できる（任意）
+        self.users = discord.ui.UserSelect(min_values=0, max_values=25, required=False)
+        self.add_item(discord.ui.Label(text="閲覧できるユーザー（任意・最大25人）", component=self.users))
 
     async def on_submit(self, interaction: discord.Interaction):
         role_ids = [int(v) for v in (self.roles.values or [])] if self.roles is not None else []
         roles = [r for r in (interaction.guild.get_role(rid) for rid in role_ids) if r is not None]
-        await self.cog.redeem_text_channel(interaction, str(self.ch_name), roles)
+        # UserSelect の値はギルド外ユーザーが混ざりうるので Member だけ拾う
+        members = [u for u in (self.users.values or []) if isinstance(u, discord.Member)]
+        await self.cog.redeem_text_channel(interaction, str(self.ch_name), roles, members)
 
 
 class ColorRoleModal(discord.ui.Modal, title="カラーロール作成"):
