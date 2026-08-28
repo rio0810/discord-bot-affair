@@ -11,6 +11,9 @@ from core.db_base import DatabaseBase
 
 logger = logging.getLogger(__name__)
 
+# Embed には区切り線がないので、空フィールドの名前として罫線を入れて代用する
+SEPARATOR = "━" * 20
+
 # サーバー加入から審査（1週間レビュー）までの経過時間
 REVIEW_AFTER = timedelta(days=7)
 
@@ -279,8 +282,10 @@ class NewcomerReview(commands.Cog, DatabaseBase):
             timestamp=discord.utils.utcnow(),
         )
         embed.set_thumbnail(url=member.display_avatar.url)
+        embed.add_field(name=SEPARATOR, value="", inline=False)
         embed.add_field(name="📅 加入日", value=joined, inline=True)
         embed.add_field(name="🎧 直近1週間のVC時間", value=self._weekly_vc_text(member.id), inline=True)
+        embed.add_field(name=SEPARATOR, value="", inline=False)
         # フィールドの上限は1024文字なので、長いプロフィールは切り詰める
         if len(profile_text) > 1024:
             profile_text = profile_text[:1023] + "…"
