@@ -343,8 +343,8 @@ class CallRoomCloseModal(discord.ui.Modal, title="個通部屋の削除"):
         self.cog = cog
         self.confirm = discord.ui.RadioGroup(
             options=[
-                discord.RadioGroupOption(label="はい（削除する）", value="yes", emoji="✅"),
-                discord.RadioGroupOption(label="いいえ（削除しない）", value="no", emoji="❌"),
+                discord.RadioGroupOption(label="✅ はい（削除する）", value="yes"),
+                discord.RadioGroupOption(label="❌ いいえ（削除しない）", value="no"),
             ],
             required=True,
         )
