@@ -81,7 +81,7 @@ class AppealPanelView(discord.ui.LayoutView):
     def __init__(self, cog: "InterviewRoomCog"):
         super().__init__(timeout=None)
         male_note = (
-            "🎤 **男性**：録音での面接あり"
+            "🎤 **男性**：プロフィール審査のみ"
             if cog.male_mode == MALE_MODE_AUDIO
             else "📝 **男性**：録音なし・プロフィールのみで審査"
         )
