@@ -81,9 +81,9 @@ class AppealPanelView(discord.ui.LayoutView):
     def __init__(self, cog: "InterviewRoomCog"):
         super().__init__(timeout=None)
         male_note = (
-            "🎤 **男性**：プロフィール審査のみ"
+            "🎤 **男性**：録音（面接）とプロフィールで審査"
             if cog.male_mode == MALE_MODE_AUDIO
-            else "📝 **男性**：録音なし・プロフィールのみで審査"
+            else "📝 **男性**：プロフィール審査のみ"
         )
         container = discord.ui.Container(accent_colour=discord.Colour.blurple())
         container.add_item(discord.ui.TextDisplay("## 📮 面接・案内パネル"))
