@@ -59,6 +59,7 @@ Copy `.env.example` to `.env` and fill in:
 | `TRIAL_WARNING_SOUND` | Soundboard sound (ID or name) played in the trial-call VC at the 5-min-remaining warning; bot briefly joins the VC to send it (needs PyNaCl). No sound if unset |
 | `LOBBY_VC_ID` | Trigger VC(s) for the join-to-create temp-VC feature (`voice/temp_vc.py`), comma-separated for multiple. Joining one makes a personal VC. Disabled if unset |
 | `TEMP_VC_CATEGORY_ID` | Category for created temp VCs (defaults to the trigger VC's category) |
+| `CONSULT_VC_CATEGORY_ID` | Category for 相談VC rooms created from the 相談VC panel (`voice/consult_vc.py`; defaults to the panel channel's category) |
 
 ## Architecture
 
@@ -69,7 +70,7 @@ cogs/            機能ごとの cog。ドメインでフォルダ分けして�
   onboarding/    waiting_room · rules · interview_room · recording_score/ · newcomer_review
   profile/       profile · role_switch · wizard/（プロフィール作成ウィザード）
   matching/      call_matching/
-  voice/         temp_vc · vc_rank/（cog.py + rank_card.py）
+  voice/         temp_vc · consult_vc · vc_rank/（cog.py + rank_card.py）
   economy/       mp_shop/
   moderation/    preban
   logs/          join_leave_log · vc_log · message_log（編集・削除）
@@ -121,6 +122,7 @@ commands.Cog + DatabaseBase (core/db_base.py)
 **Key background tasks (discord.py `@tasks.loop`):**
 - `voice/vc_rank/` — tracks VC time every 1 min and updates users' rank
 - `voice/temp_vc.py` — join-to-create temp VCs; sweeps empty temp VCs every 5 min (`temp_vcs` table); rename panel in the VC's text chat
+- `voice/consult_vc.py` — 相談VC rooms (`consult_vcs` table); `sweep` every 5 min deletes rooms nobody ever joined after a 15-min grace period and reaps rows whose channel is gone
 - `onboarding/recording_score/` — `review_deadline_loop` every 10 min: mentions unscored reviewers at 12h and force-finalizes the review at 21h (`interview_reviews` table)
 - `onboarding/recording_score/` — `unsubmitted_ban_loop` every 10 min (only when `UNSUBMITTED_BAN_HOURS` > 0): bans members who still hold the review/waiting role and haven't submitted (`_has_submitted`: `interview_done` / `interview_reviews` / `interview_verdicts`) `UNSUBMITTED_BAN_HOURS` after `joined_at`. No warning DM and no Discord notification — console logging only
 - `onboarding/newcomer_review.py` — `review_loop` hourly: when a `NEWCOMER_ROLE_ID` holder has been in the server ≥7 days (`joined_at`), posts a thread to `NEWCOMER_REVIEW_FORUM_ID` with their saved profile embed (`member_profiles`, stored by the profile wizard) + メンバー化/BAN buttons (anyone can press). Dedup via `newcomer_reviews`; double-verdict guard via `newcomer_verdicts`. Approval removes `NEWCOMER_ROLE_ID` and adds `MEMBER_ROLE_ID`. The post also shows the member's **VC time over the last 7 days**, read from `vc_daily` via `VCRank.get_recent_vc_minutes()` (`bot.get_cog("VCRank")`; shows 不明 if unavailable)
@@ -142,4 +144,5 @@ commands.Cog + DatabaseBase (core/db_base.py)
 | `/set_mp_panel` | `economy/mp_shop` | Admin: place an MP-ticket panel — check balance button + redeem select (お試し個通リセット → clears the user's `trial_invites`; 個人専用テキストチャット作成 → modal for name + viewer-role checkboxes limited to `MALE_ROLE_ID`/`FEMALE_ROLE_ID` + a `UserSelect` of individual viewers (up to 25); at least one role or user is required, and each selected role/member gets a `view_channel`+`send_messages` overwrite; ロール作成 → modal for name + hex color, creates the role at the bottom and assigns it; カラーロール作成 (`COLOR_ROLE_COST`, 15) → modal for name + style RadioGroup (グラデーション/ホログラフィック); creates a role with `secondary_color`/`tertiary_color` — gradient uses a gender-based base (male=blue, female=red via `MALE_ROLE_ID`/`FEMALE_ROLE_ID`), holographic uses Discord's fixed 3-color preset; requires the server's boost-gated enhanced role colors (refunds on failure); 雰囲気写真の閲覧権 (`MOOD_PHOTO_ROLE_ID`) with a 24h image-post deadline enforced by a loop; サーバー絵文字追加 → modal for name + image `FileUpload`, creates a guild custom emoji). Costs live in `cogs/economy/mp_shop/constants.py`. Tickets are the `users.mp_tickets` column granted on VC level-up |
 | `/mp_give` `/mp_take` | `economy/mp_shop` | Admin: grant/confiscate a member's MP tickets (logged to `MP_LOG_CHANNEL_ID` if set) |
 | `/mp_list` | `economy/mp_shop` | Admin: list members' MP ticket holdings (desc) |
+| `/set_consult_panel` | `voice/consult_vc.py` | Admin: place the 相談VC panel — a 雑談 (`ZERO_ROMANCE_ROLE_ID`) or 恋愛 (`ROMANCE_ROLE_ID`) role holder presses the button, picks one partner from a paged select of members holding either role (so 雑談⇄恋愛 across the hidden category works), and the bot creates a private VC (`@everyone` denied; the two members + `ADMIN_ROLE_ID` allowed) under `CONSULT_VC_CATEGORY_ID`. The partner is invited by DM (silently skipped if DMs are closed — the creator is told). One room per creator; the VC's embedded chat carries a 相談VCを閉じる button, and the room auto-deletes when everyone leaves, when a participant leaves the server, or 15 min after creation if nobody ever joined (`consult_vcs` table) |
 | `/set_role_panel` | `profile/role_switch.py` | Admin: place a panel with 雑談/恋愛 buttons; members self-switch between `ZERO_ROMANCE_ROLE_ID` and `ROMANCE_ROLE_ID` (mutually exclusive; 雑談 hides the configured category). Switching has a 2-week cooldown per user (`role_switch_cooldowns` table); profile-creation role assignment is exempt |

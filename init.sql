@@ -125,3 +125,12 @@ CREATE TABLE IF NOT EXISTS role_switch_cooldowns (
     user_id BIGINT PRIMARY KEY,
     last_switch TIMESTAMP NOT NULL
 );
+
+-- 11. 相談VC（雑談／恋愛ロール向けの2人用VC。cog 読み込み時にも自動作成される）
+CREATE TABLE IF NOT EXISTS consult_vcs (
+    channel_id BIGINT PRIMARY KEY,
+    owner_id BIGINT NOT NULL,
+    partner_id BIGINT NOT NULL,
+    guild_id BIGINT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
